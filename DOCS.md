@@ -570,6 +570,10 @@ CI собирает и публикует образ в Docker Hub при каж
 своего форка (`docker.io/<ваш-логин-dockerhub>/<имя-репозитория>`) либо просто
 соберите локально через `make run` / `docker compose build`.
 
+Образ весит всего **~26 МБ**: ни интерпретаторов, ни nginx, ни supervisor.
+Для сравнения, [`ghcr.io/w0rng/amnezia-wg-easy:latest`](https://github.com/w0rng/amnezia-wg-easy)
+весит ~80 МБ.
+
 Версии upstream AmneziaWG закреплены в `Dockerfile`
 (`AWG_GO_VERSION=v3.1.20260828`, `AWG_TOOLS_VERSION=v3.1.20260812`), поэтому
 пересборка не может незаметно подтянуть несовместимый или сломанный коммит
