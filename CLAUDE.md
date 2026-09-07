@@ -9,11 +9,15 @@ Placement of backend files in `internal` directory.
 - Own Go module in `web-ui`, built with `go tool fyne package -os wasm`
 
 Placement of frontend files in `web-ui` directory: `main.go` is the entry
-point and everything else lives in the `web-ui/internal/ui` package, which
-exports only `New`, `NewDarkTheme` and the `UI` type's `Build`/`Start`. Wire
-types shared with the backend live in `web-ui/api` and are pulled into the
-root module via a `replace` directive - add new request/response structs
-there, never twice.
+point and the UI lives in the `web-ui/internal/ui` package, which exports only
+`New`, `NewDarkTheme` and the `UI` type's `Build`/`Start`. Wire types shared
+with the backend live in `web-ui/api` and are pulled into the root module via
+a `replace` directive - add new request/response structs there, never twice.
+
+The one other frontend package is `web-ui/internal/fixes`: workarounds for
+upstream bugs in fyne and its wasm driver, one per file, each documenting the
+bug and when it can be dropped. `main.go` calls `fixes.Install()` before the
+window starts; keep such patches out of the UI code.
 
 Build the bundle with `make web-ui`; it lands in `web-ui/wasm`, which the
 server serves straight off disk under the relative path `./web-ui/wasm`

@@ -460,6 +460,9 @@ func (m *Manager) CreateServer(req CreateServerRequest) (*Server, error) {
 	if port == 0 {
 		port = m.DefaultPort
 	}
+	if holder, ok := m.portInUse(port); ok {
+		return nil, fmt.Errorf("port %d is already used by %s: %w", port, holder, ErrConflict)
+	}
 	subnet := req.Subnet
 	if subnet == "" {
 		subnet = m.DefaultSubnet
@@ -469,7 +472,7 @@ func (m *Manager) CreateServer(req CreateServerRequest) (*Server, error) {
 		mtu = m.DefaultMTU
 	}
 	if mtu < 1280 || mtu > 1440 {
-		return nil, fmt.Errorf("MTU must be between 1280 and 1440, got %d", mtu)
+		return nil, fmt.Errorf("MTU must be between 1280 and 1440, got %d: %w", mtu, ErrInvalid)
 	}
 
 	endpoint := strings.TrimSpace(req.Endpoint)
@@ -502,7 +505,7 @@ func (m *Manager) CreateServer(req CreateServerRequest) (*Server, error) {
 	}
 	for _, dns := range dnsServers {
 		if !isValidIPv4(dns) {
-			return nil, fmt.Errorf("invalid DNS server IP: %s", dns)
+			return nil, fmt.Errorf("invalid DNS server IP %s: %w", dns, ErrInvalid)
 		}
 	}
 
@@ -541,7 +544,7 @@ func (m *Manager) CreateServer(req CreateServerRequest) (*Server, error) {
 			obfParams.HeaderProtectionKey = randomBase64Key()
 		}
 		if err := validateObfuscationParams(obfParams); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("%w: %w", ErrInvalid, err)
 		}
 	}
 
@@ -803,6 +806,28 @@ func cloneServer(srv *Server) Server {
 		clone.Clients[i] = cloneClient(&srv.Clients[i])
 	}
 	return clone
+}
+
+// portInUse names whatever already holds this port - another server, or the
+// web UI's own listener - if anything does. Two interfaces cannot share a
+// port: the second one comes up only to have awg-quick fail on bind, long
+// after the create request was answered, so the clash is worth catching up
+// front. The panel's port is reserved along with them: it is TCP rather than
+// UDP and would technically coexist, but a deployment that publishes one
+// number for two different things is a trap, not a feature.
+func (m *Manager) portInUse(port int) (string, bool) {
+	if webPort, err := strconv.Atoi(strings.TrimSpace(m.WebUIPort)); err == nil && webPort == port {
+		return "the web UI", true
+	}
+
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for i := range m.Config.Servers {
+		if m.Config.Servers[i].Port == port {
+			return fmt.Sprintf("server %q", m.Config.Servers[i].Name), true
+		}
+	}
+	return "", false
 }
 
 // addServer locks and appends a new server to the config.

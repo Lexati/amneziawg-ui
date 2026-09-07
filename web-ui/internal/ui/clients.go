@@ -153,9 +153,7 @@ func (u *UI) showClientDialog(server api.Server, client *api.Client) {
 	applyI := widget.NewCheck("Apply I-settings (custom signature packets I1-I5)", nil)
 	iEntries := make([]*widget.Entry, 5)
 	for i := range iEntries {
-		iEntries[i] = widget.NewMultiLineEntry()
-		iEntries[i].Wrapping = fyne.TextWrapBreak
-		iEntries[i].SetMinRowsVisible(2)
+		iEntries[i] = widget.NewEntry()
 	}
 
 	u.mu.Lock()

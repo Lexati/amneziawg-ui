@@ -7,10 +7,15 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 
+	"amneziawg-web-ui/web-ui/internal/fixes"
 	"amneziawg-web-ui/web-ui/internal/ui"
 )
 
 func main() {
+	// Upstream workarounds first: they have to be in place before the window
+	// takes any input.
+	fixes.Install()
+
 	application := app.NewWithID("io.amnezia.webui")
 
 	// One theme, always dark - the page is served with a matching dark

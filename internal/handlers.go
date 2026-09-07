@@ -131,8 +131,7 @@ func (h *Handlers) createServer(c fiber.Ctx) error {
 	}
 	srv, err := h.mgr.CreateServer(req)
 	if err != nil {
-		// Everything CreateServer rejects is a problem with the request.
-		return respond(c, fiber.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		return fail(c, err)
 	}
 	return c.JSON(srv)
 }

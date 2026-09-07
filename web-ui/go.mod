@@ -1,6 +1,6 @@
 module amneziawg-web-ui/web-ui
 
-go 1.26.0
+go 1.26.4
 
 tool fyne.io/tools/cmd/fyne
 

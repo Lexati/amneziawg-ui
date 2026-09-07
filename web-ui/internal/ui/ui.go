@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"image/color"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -55,6 +57,10 @@ type UI struct {
 	serversHash string
 	cards       map[string]*serverCard
 	defaultI    api.ISettings
+
+	// webUIPort is the panel's own listener, reported by /api/system/status.
+	// The create form treats it as taken like any server's port.
+	webUIPort int
 
 	toastSeq int
 }
@@ -250,6 +256,14 @@ func (u *UI) loadSystemStatus() {
 	if !u.socketLive.Load() {
 		u.setTransport("polling", colWarning)
 	}
+
+	port, err := strconv.Atoi(strings.TrimSpace(status.Environment.WebUIPort))
+	if err == nil {
+		u.mu.Lock()
+		u.webUIPort = port
+		u.mu.Unlock()
+	}
+
 	u.setSummary(fmt.Sprintf("%d/%d servers running · %d clients",
 		status.ActiveServers, status.TotalServers, status.TotalClients))
 	u.setPublicIP(status.PublicIP)

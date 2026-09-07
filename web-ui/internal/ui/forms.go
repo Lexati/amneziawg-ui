@@ -22,7 +22,19 @@ var (
 	rangePattern  = regexp.MustCompile(`^\d+(-\d+)?$`)
 )
 
-// serverForm is the collapsible "Create New VPN Server" panel.
+// The values the simple mode fills in on the user's behalf, and the ones the
+// advanced fields start out with - declared once so the two modes can never
+// disagree about what "the default" is.
+const (
+	defaultPort   = "54844"
+	defaultSubnet = "10.0.0.0/24"
+	defaultMTU    = 1420
+	defaultDNS    = "8.8.8.8,1.1.1.1"
+)
+
+// serverForm is the collapsible "Create New VPN Server" panel. It has two
+// modes: the default one asks for a name and a port and generates everything
+// else, the advanced one exposes every knob (see setAdvanced).
 type serverForm struct {
 	ui *UI
 
@@ -32,6 +44,10 @@ type serverForm struct {
 	mtu      *widget.Entry
 	dns      *widget.Entry
 	endpoint *widget.Entry
+
+	advancedMode *widget.Check
+	extras       *widget.Form
+	simpleNote   *widget.Label
 
 	autoStart   *widget.Check
 	obfuscation *widget.Check
@@ -46,9 +62,9 @@ type serverForm struct {
 
 	advanced []*advancedField
 
-	obfBox *fyne.Container
-	errors *widget.Label
-	create *pointerButton
+	obfCard fyne.CanvasObject
+	errors  *widget.Label
+	create  *pointerButton
 
 	toggle *pointerButton
 	body   *fyne.Container
@@ -66,35 +82,39 @@ func newServerForm(u *UI) *serverForm {
 	f := &serverForm{ui: u}
 
 	f.name = entryWithPlaceholder("My VPN Server")
-	f.port = entryWithText("54844")
-	f.subnet = entryWithText("10.0.0.0/24")
-	f.mtu = entryWithText("1420")
-	f.dns = entryWithText("8.8.8.8,1.1.1.1")
+	f.port = entryWithText(defaultPort)
+	f.subnet = entryWithText(defaultSubnet)
+	f.mtu = entryWithText(strconv.Itoa(defaultMTU))
+	f.dns = entryWithText(defaultDNS)
 	f.endpoint = entryWithPlaceholder("leave empty to use the auto-detected public IP")
+
+	f.advancedMode = widget.NewCheck("Advanced settings", f.setAdvanced)
 
 	f.autoStart = widget.NewCheck("Auto-start server on creation", nil)
 	f.autoStart.SetChecked(true)
 
-	f.obfuscation = widget.NewCheck("Enable traffic obfuscation (AmneziaWG 3.1)", func(on bool) {
-		if f.obfBox == nil {
-			return
-		}
-		if on {
-			f.obfBox.Show()
-		} else {
-			f.obfBox.Hide()
-		}
+	f.obfuscation = widget.NewCheck("Enable traffic obfuscation (AmneziaWG 3.1)", func(bool) {
+		f.showObfuscation()
 	})
 	f.obfuscation.SetChecked(true)
 
-	basics := widget.NewForm(
-		&widget.FormItem{Text: "Server name", Widget: f.name},
-		&widget.FormItem{Text: "Port", Widget: f.port},
+	// The two fields the simple mode asks for sit side by side; the rest of
+	// them only exist in the advanced mode and keep the usual form rows.
+	basics := container.NewGridWithColumns(2,
+		labeled("Server name", f.name),
+		labeled("Port", f.port),
+	)
+	f.extras = widget.NewForm(
 		&widget.FormItem{Text: "Subnet", Widget: f.subnet, HintText: "e.g. 10.0.0.0/24"},
 		&widget.FormItem{Text: "MTU", Widget: f.mtu, HintText: "1280-1440; 1420-1440 performs best on most links"},
 		&widget.FormItem{Text: "DNS servers", Widget: f.dns, HintText: "comma-separated IPs, e.g. 8.8.8.8,1.1.1.1"},
 		&widget.FormItem{Text: "Endpoint", Widget: f.endpoint, HintText: "custom IP or hostname clients connect to"},
 	)
+
+	f.simpleNote = widget.NewLabel("Subnet, MTU, DNS, endpoint and the AmneziaWG 3.1 obfuscation parameters are " +
+		"generated automatically. Tick \"Advanced settings\" to fill them in yourself.")
+	f.simpleNote.Wrapping = fyne.TextWrapWord
+	f.simpleNote.TextStyle = fyne.TextStyle{Italic: true}
 
 	f.errors = widget.NewLabel("")
 	f.errors.Wrapping = fyne.TextWrapWord
@@ -104,14 +124,23 @@ func newServerForm(u *UI) *serverForm {
 	f.create = button("Create server", theme.ConfirmIcon(), f.submit)
 	f.create.Importance = widget.HighImportance
 
+	f.obfCard = f.buildObfuscation()
+
 	content := container.NewVBox(
 		basics,
+		f.advancedMode,
+		f.simpleNote,
+		f.extras,
 		f.autoStart,
 		f.obfuscation,
-		f.buildObfuscation(),
+		f.obfCard,
 		f.errors,
 		container.NewHBox(f.create),
 	)
+
+	// Start collapsed down to name and port; setAdvanced owns every piece of
+	// the layout the two modes disagree about.
+	f.setAdvanced(false)
 
 	// A hand-rolled disclosure rather than widget.Accordion: collapsing has
 	// to tell the page to re-clamp its scroll offset, otherwise the viewport
@@ -138,6 +167,10 @@ func (f *serverForm) toggleOpen() {
 		return
 	}
 
+	// Offer a port nothing is listening on yet, so creating a second server is
+	// still a matter of typing a name and pressing the button.
+	f.port.SetText(f.nextFreePort())
+
 	f.body.Show()
 	f.toggle.SetIcon(theme.MenuDropUpIcon())
 	f.ui.clampScroll()
@@ -147,6 +180,40 @@ func (f *serverForm) collapse() {
 	f.body.Hide()
 	f.toggle.SetIcon(theme.MenuDropDownIcon())
 	f.ui.clampScroll()
+}
+
+// setAdvanced switches between the two modes: the simple one shows a name and
+// a port and lets build() generate the rest, the advanced one adds the
+// remaining fields, the toggles and the obfuscation block.
+func (f *serverForm) setAdvanced(on bool) {
+	if on {
+		f.simpleNote.Hide()
+		f.extras.Show()
+		f.autoStart.Show()
+		f.obfuscation.Show()
+	} else {
+		f.simpleNote.Show()
+		f.extras.Hide()
+		f.autoStart.Hide()
+		f.obfuscation.Hide()
+	}
+
+	f.showObfuscation()
+	f.ui.clampScroll()
+}
+
+// showObfuscation keeps the parameter block visible only where it can be
+// edited: in advanced mode, with obfuscation turned on. The nil check covers
+// the SetChecked calls newServerForm makes before the block itself is built.
+func (f *serverForm) showObfuscation() {
+	if f.obfCard == nil {
+		return
+	}
+	if f.advancedMode.Checked && f.obfuscation.Checked {
+		f.obfCard.Show()
+	} else {
+		f.obfCard.Hide()
+	}
 }
 
 // buildObfuscation lays out the AmneziaWG parameter block: the packet-shaping
@@ -222,7 +289,7 @@ func (f *serverForm) buildObfuscation() fyne.CanvasObject {
 	advancedNote.Wrapping = fyne.TextWrapWord
 	advancedNote.TextStyle = fyne.TextStyle{Italic: true}
 
-	f.obfBox = container.NewVBox(
+	box := container.NewVBox(
 		sectionTitle("Obfuscation parameters"),
 		junk, sizes, headers,
 		container.NewHBox(random),
@@ -234,15 +301,49 @@ func (f *serverForm) buildObfuscation() fyne.CanvasObject {
 		advancedNote, advancedGrid,
 	)
 
-	return container.NewPadded(card(f.obfBox))
+	return container.NewPadded(card(box))
 }
 
+// randomise rolls the packet-shaping numbers, leaving the fields the user is
+// more likely to have deliberately set (Jmin/Jmax, the switches, the timing
+// knobs) alone.
 func (f *serverForm) randomise() {
-	f.jc.SetText(strconv.Itoa(rand.Intn(9) + 4))    // 4-12
-	f.s1.SetText(strconv.Itoa(rand.Intn(136) + 15)) // 15-150
-	f.s2.SetText(strconv.Itoa(rand.Intn(136) + 15)) // 15-150
-	f.s3.SetText(strconv.Itoa(rand.Intn(245) + 12)) // 12-256, header protection needs >= 12
-	f.s4.SetText(strconv.Itoa(rand.Intn(21) + 12))  // 12-32, header protection needs >= 12
+	p := randomObfuscation(f.mtuOrDefault())
+
+	f.jc.SetText(strconv.Itoa(p.Jc))
+	f.s1.SetText(strconv.Itoa(p.S1))
+	f.s2.SetText(strconv.Itoa(p.S2))
+	f.s3.SetText(strconv.Itoa(p.S3))
+	f.s4.SetText(strconv.Itoa(p.S4))
+	f.h1.SetText(strconv.Itoa(p.H1))
+	f.h2.SetText(strconv.Itoa(p.H2))
+	f.h3.SetText(strconv.Itoa(p.H3))
+	f.h4.SetText(strconv.Itoa(p.H4))
+}
+
+// randomObfuscation rolls a full AmneziaWG 3.1 parameter set that passes
+// validateObfuscation for the given MTU. The header protection key is left
+// empty on purpose: the backend generates one whenever obfuscation is on.
+func randomObfuscation(mtu int) *api.ObfuscationParams {
+	p := &api.ObfuscationParams{
+		Jc:             randomBetween(4, 12),
+		Jmin:           8,
+		Jmax:           80,
+		S3:             randomBetween(12, 256), // header protection needs >= 12
+		S4:             randomBetween(12, 32),  // and S4 tops out at 32
+		RandomTrailers: true,
+		DisableCookies: true,
+	}
+
+	// S1 and S2 are bounded by the MTU as well, and must not end up exactly
+	// 56 apart - the one combination the engine rejects outright.
+	for {
+		p.S1 = randomBetween(15, min(150, mtu-148))
+		p.S2 = randomBetween(15, min(150, mtu-92))
+		if p.S1+56 != p.S2 {
+			break
+		}
+	}
 
 	// H1-H4 have to be four distinct values.
 	seen := map[int]bool{}
@@ -255,10 +356,83 @@ func (f *serverForm) randomise() {
 		seen[candidate] = true
 		values = append(values, candidate)
 	}
-	f.h1.SetText(strconv.Itoa(values[0]))
-	f.h2.SetText(strconv.Itoa(values[1]))
-	f.h3.SetText(strconv.Itoa(values[2]))
-	f.h4.SetText(strconv.Itoa(values[3]))
+	p.H1, p.H2, p.H3, p.H4 = values[0], values[1], values[2], values[3]
+
+	return p
+}
+
+// randomBetween returns a value in [lo, hi], collapsing to lo when an MTU too
+// small for the range has squeezed the window shut - the MTU check reports
+// that on its own, and this must not panic in the meantime.
+func randomBetween(lo, hi int) int {
+	if hi <= lo {
+		return lo
+	}
+	return rand.Intn(hi-lo+1) + lo
+}
+
+// mtuOrDefault reads the MTU field for the callers that only need a plausible
+// number (parameter generation); build() does the reporting parse.
+func (f *serverForm) mtuOrDefault() int {
+	mtu, err := strconv.Atoi(strings.TrimSpace(f.mtu.Text))
+	if err != nil || mtu < 1280 || mtu > 1440 {
+		return defaultMTU
+	}
+	return mtu
+}
+
+// takenPorts maps every port that is already spoken for to what holds it: an
+// existing server, or the panel's own listener. Two interfaces cannot share a
+// port, and the clash would otherwise only show up when the second one fails
+// to come up.
+func (f *serverForm) takenPorts() map[int]string {
+	f.ui.mu.Lock()
+	defer f.ui.mu.Unlock()
+
+	taken := make(map[int]string, len(f.ui.servers)+1)
+	if f.ui.webUIPort > 0 {
+		taken[f.ui.webUIPort] = "the web UI"
+	}
+	for _, server := range f.ui.servers {
+		taken[server.Port] = fmt.Sprintf("server %q", server.Name)
+	}
+	return taken
+}
+
+// nextFreePort walks up from whatever the field holds until it finds a port no
+// server has taken. An unparsable value is left alone - build() reports it.
+func (f *serverForm) nextFreePort() string {
+	port, err := strconv.Atoi(strings.TrimSpace(f.port.Text))
+	if err != nil || port < 1 || port > 65535 {
+		return f.port.Text
+	}
+
+	taken := f.takenPorts()
+	for ; port <= 65535; port++ {
+		if _, used := taken[port]; !used {
+			return strconv.Itoa(port)
+		}
+	}
+	return f.port.Text
+}
+
+// nextFreeSubnet picks a /24 no existing server has taken, so servers created
+// in the simple mode never collide with each other.
+func (f *serverForm) nextFreeSubnet() string {
+	f.ui.mu.Lock()
+	taken := make(map[string]bool, len(f.ui.servers))
+	for _, server := range f.ui.servers {
+		taken[strings.TrimSpace(server.Subnet)] = true
+	}
+	f.ui.mu.Unlock()
+
+	for i := range 256 {
+		candidate := fmt.Sprintf("10.%d.0.0/24", i)
+		if !taken[candidate] {
+			return candidate
+		}
+	}
+	return defaultSubnet
 }
 
 func (f *serverForm) showErrors(messages []string) {
@@ -270,29 +444,39 @@ func (f *serverForm) showErrors(messages []string) {
 	f.errors.Show()
 }
 
-// build validates every field and returns the payload for POST /api/servers.
+// build validates the fields the current mode exposes and returns the payload
+// for POST /api/servers.
 func (f *serverForm) build() (api.CreateServerRequest, []string) {
 	var problems []string
+
+	name := strings.TrimSpace(f.name.Text)
+	if name == "" {
+		problems = append(problems, "Server name is required")
+	}
+
+	port, err := strconv.Atoi(strings.TrimSpace(f.port.Text))
+	switch taken, used := f.takenPorts()[port]; {
+	case err != nil, port < 1, port > 65535:
+		problems = append(problems, "Port must be between 1 and 65535")
+	case used:
+		problems = append(problems, fmt.Sprintf("Port %d is already used by %s", port, taken))
+	}
+
+	if !f.advancedMode.Checked {
+		return f.generated(name, port), problems
+	}
+
 	autoStart := f.autoStart.Checked
 	obfuscation := f.obfuscation.Checked
 	req := api.CreateServerRequest{
-		Name:        strings.TrimSpace(f.name.Text),
+		Name:        name,
+		Port:        port,
 		Subnet:      strings.TrimSpace(f.subnet.Text),
 		Endpoint:    strings.TrimSpace(f.endpoint.Text),
 		DNS:         strings.TrimSpace(f.dns.Text),
 		AutoStart:   &autoStart,
 		Obfuscation: &obfuscation,
 	}
-
-	if req.Name == "" {
-		problems = append(problems, "Server name is required")
-	}
-
-	port, err := strconv.Atoi(strings.TrimSpace(f.port.Text))
-	if err != nil || port < 1 || port > 65535 {
-		problems = append(problems, "Port must be between 1 and 65535")
-	}
-	req.Port = port
 
 	if !subnetPattern.MatchString(req.Subnet) {
 		problems = append(problems, "Valid subnet is required (e.g. 10.0.0.0/24)")
@@ -322,6 +506,25 @@ func (f *serverForm) build() (api.CreateServerRequest, []string) {
 	}
 
 	return req, problems
+}
+
+// generated is the simple mode's payload: the name and port the user gave,
+// everything else derived. The advanced entries are deliberately not read -
+// switching back to the simple mode means "forget what I typed there", not
+// "keep it but hide it".
+func (f *serverForm) generated(name string, port int) api.CreateServerRequest {
+	autoStart, obfuscation := true, true
+	return api.CreateServerRequest{
+		Name:              name,
+		Port:              port,
+		Subnet:            f.nextFreeSubnet(),
+		MTU:               defaultMTU,
+		DNS:               defaultDNS,
+		Endpoint:          "", // the backend fills in the detected public IP
+		AutoStart:         &autoStart,
+		Obfuscation:       &obfuscation,
+		ObfuscationParams: randomObfuscation(defaultMTU),
+	}
 }
 
 func (f *serverForm) obfuscationParams(mtu int) (*api.ObfuscationParams, []string) {

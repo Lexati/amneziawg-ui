@@ -64,6 +64,28 @@ func TestMissingServerIs404AndAFailedStartIs500(t *testing.T) {
 	}
 }
 
+// Creating a server used to answer 400 whatever went wrong. A port another
+// server already listens on is a clash with the current state, not a
+// malformed request, and an invalid MTU is still the request's own fault.
+func TestCreateServerSeparatesAPortClashFromABadValue(t *testing.T) {
+	app, _ := newTestAPI(t) // "srv" is already on 54844
+
+	status, body := call(t, app, http.MethodPost, "/api/servers",
+		`{"name":"second","port":54844}`)
+	if status != http.StatusConflict {
+		t.Errorf("duplicate port: status = %d, want 409 (%s)", status, body)
+	}
+	if !strings.Contains(string(body), "54844") {
+		t.Errorf("error payload should name the port: %s", body)
+	}
+
+	status, body = call(t, app, http.MethodPost, "/api/servers",
+		`{"name":"second","port":54845,"mtu":9000}`)
+	if status != http.StatusBadRequest {
+		t.Errorf("bad MTU: status = %d, want 400 (%s)", status, body)
+	}
+}
+
 func TestMalformedBodyIsRejected(t *testing.T) {
 	app, m := newTestAPI(t)
 	client, _, err := m.AddClient("s1", "alice", false, nil, "")
