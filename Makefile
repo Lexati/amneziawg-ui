@@ -175,4 +175,41 @@ deploy: ## Deploy via docker (host name is requested at runtime)
 	echo "deploying on $$HOST"; \
 	ssh "$$HOST" "cd /usr/local/include/proxy && (docker compose down || true) && (docker image rm -f 'proxy:latest' || true) && docker load < proxy.tar && docker compose up -d && rm -rf /usr/local/include/proxy"
 
+##@ Updates
 
+# Upstream sources of the two components the image pins by exact tag. The
+# Dockerfile stays the single source of truth: this target only reads the
+# pinned values out of it and reports, it never edits anything.
+AWG_GO_REPO    ?= https://github.com/amnezia-vpn/amneziawg-go.git
+AWG_TOOLS_REPO ?= https://github.com/amnezia-vpn/amneziawg-tools.git
+
+.PHONY: check-updates
+check-updates: ## Compare AWG_GO_VERSION/AWG_TOOLS_VERSION from the Dockerfile with the latest upstream tags
+	@pinned() { sed -n "s/^ARG $$1=//p" Dockerfile | head -1; }; \
+	latest() { \
+		git ls-remote --tags --refs "$$1" 2>/dev/null \
+			| sed 's|.*refs/tags/||' \
+			| grep -E '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9]+)?$$' \
+			| sort -V | tail -1; \
+	}; \
+	outdated=0; \
+	report() { \
+		if [ -z "$$3" ]; then \
+			status='lookup failed'; \
+		elif [ "$$2" = "$$3" ]; then \
+			status='up to date'; \
+		else \
+			status='UPDATE AVAILABLE'; outdated=$$((outdated + 1)); \
+		fi; \
+		printf '  %-16s %-18s %-18s %s\n' "$$1" "$$2" "$${3:-?}" "$$status"; \
+	}; \
+	printf '\n  %-16s %-18s %-18s %s\n' 'COMPONENT' 'PINNED' 'LATEST' 'STATUS'; \
+	report AWG_GO    "$$(pinned AWG_GO_VERSION)"    "$$(latest $(AWG_GO_REPO))"; \
+	report AWG_TOOLS "$$(pinned AWG_TOOLS_VERSION)" "$$(latest $(AWG_TOOLS_REPO))"; \
+	echo; \
+	if [ "$$outdated" -gt 0 ]; then \
+		echo "  $$outdated component(s) behind upstream - bump the ARG lines at the top of Dockerfile"; \
+	else \
+		echo '  Both versions pinned in Dockerfile are current'; \
+	fi; \
+	echo
