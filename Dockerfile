@@ -29,10 +29,26 @@ COPY . .
 #
 # GOOS=js output is identical for every target platform, so this stage names no
 # TARGETARCH and BuildKit builds it once for the whole multi-platform image.
+#
+# The header shows the release the bundle was built from, and "fyne package"
+# reads that release out of FyneApp.toml. The repository is in the build
+# context with its .git, so the newest tag is resolved here exactly as the
+# web-ui make target resolves it on a developer's machine - deliberately
+# inline rather than through that target, so the image never depends on make.
+# A context carrying no tags (a source tarball, a clone fetched without them)
+# just leaves the committed Version as it is.
 FROM base AS web
 RUN --mount=type=cache,id=awg_mod,target=/go/pkg/mod \
     --mount=type=cache,id=awg_build,target=/root/.cache/go-build \
-    cd web-ui && go tool fyne package -os wasm --name bundle --release \
+    git config --global --add safe.directory /build \
+    && tag=$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//') \
+    && if [ -n "$tag" ]; then \
+        sed -i "s/^Version = .*/Version = \"$tag\"/" web-ui/FyneApp.toml; \
+        echo "frontend version: $tag"; \
+    else \
+        echo "frontend version: no git tag in the build context, keeping FyneApp.toml"; \
+    fi \
+    && cd web-ui && go tool fyne package -os wasm --name bundle --release \
     && gzip -9 wasm/bundle.wasm
 
 # ── Backend ───────────────────────────────────────────────────────

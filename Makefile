@@ -38,8 +38,25 @@ GO_BUILD_FLAGS = -trimpath -ldflags="-s -w"
 WASM_DIR = web-ui/wasm
 
 .PHONY: web-ui
-web-ui: check-go web-ui-clean ## Build the Fyne WebAssembly frontend into web-ui/wasm/
+web-ui: check-go web-ui-version web-ui-clean ## Build the Fyne WebAssembly frontend into web-ui/wasm/
 	cd web-ui && go tool fyne package -os wasm --name $(WASM_NAME) --release
+
+# The header shows the release the bundle was built from, and "fyne package"
+# reads that release out of FyneApp.toml (bumping Build there itself on every
+# run). This keeps the Version line in step with the newest git tag rather
+# than leaving it to be remembered by hand. The image resolves the tag the
+# same way, inline in its frontend stage, so the two builds agree without the
+# Dockerfile having to call make.
+.PHONY: web-ui-version
+web-ui-version: ## Sync Version in web-ui/FyneApp.toml with the newest git tag
+	@tag=$$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//'); \
+	current=$$(sed -n 's/^Version = "\(.*\)"/\1/p' web-ui/FyneApp.toml); \
+	if [ -z "$$tag" ]; then \
+		echo "  no git tag found - web-ui/FyneApp.toml keeps Version $$current"; \
+	elif [ "$$tag" != "$$current" ]; then \
+		sed -i "s/^Version = .*/Version = \"$$tag\"/" web-ui/FyneApp.toml; \
+		echo "  web-ui/FyneApp.toml: Version $$current -> $$tag"; \
+	fi
 
 .PHONY: web-ui-clean
 web-ui-clean: ## Remove the built frontend bundle

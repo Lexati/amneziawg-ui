@@ -3,6 +3,5 @@ web-ui/wasm/
 *.bin
 *.tar
 
-.git/
 .idea/
 .env

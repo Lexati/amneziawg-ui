@@ -104,6 +104,9 @@ func (u *UI) header() fyne.CanvasObject {
 	title.TextSize = 22
 	title.TextStyle = fyne.TextStyle{Bold: true}
 
+	version := smallText(u.version(), colMuted)
+	version.TextStyle = fyne.TextStyle{Monospace: true}
+
 	ipCaption := smallText("Public IP", colMuted)
 	u.publicIP = smallText("detecting…", colPrimary)
 	u.publicIP.TextStyle = fyne.TextStyle{Monospace: true}
@@ -128,7 +131,7 @@ func (u *UI) header() fyne.CanvasObject {
 	)
 
 	bar := container.NewBorder(nil, nil,
-		container.NewCenter(title),
+		container.NewHBox(container.NewCenter(title), container.NewCenter(version)),
 		container.NewHBox(info, refresh),
 	)
 
@@ -137,6 +140,21 @@ func (u *UI) header() fyne.CanvasObject {
 	line.SetMinSize(fyne.NewSize(0, 1))
 
 	return container.NewStack(bg, container.NewBorder(nil, line, nil, nil, container.NewPadded(bar)))
+}
+
+// version is the build stamp "fyne package" bakes into the bundle: the
+// release tag it reads from FyneApp.toml - written there from the newest git
+// tag by the web-ui make target, and by the image's frontend stage - and the
+// build number it bumps on every package run. A bundle built by a plain "go build" carries no metadata at
+// all, so it reports itself as a development build rather than claiming a
+// version it was never given.
+func (u *UI) version() string {
+	meta := u.app.Metadata()
+	if meta.Version == "" {
+		return "dev"
+	}
+
+	return fmt.Sprintf("v%s · build %d", meta.Version, meta.Build)
 }
 
 func (u *UI) footer() fyne.CanvasObject {
