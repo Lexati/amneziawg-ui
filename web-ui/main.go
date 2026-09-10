@@ -12,11 +12,11 @@ import (
 )
 
 func main() {
-	// Upstream workarounds first: they have to be in place before the window
-	// takes any input.
-	fixes.Install()
-
 	application := app.NewWithID("io.amnezia.webui")
+
+	// Upstream workarounds next: they have to be in place before the window
+	// takes any input, and one of them replaces the app's clipboard.
+	fixes.Install(application)
 
 	// One theme, always dark - the page is served with a matching dark
 	// loader, so the app never flashes a light background.

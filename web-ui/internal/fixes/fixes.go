@@ -4,7 +4,11 @@
 // dropped again.
 package fixes
 
-// Install puts every workaround in place; call it before the window starts.
-func Install() {
+import "fyne.io/fyne/v2"
+
+// Install puts every workaround in place; call it on the application before
+// the window starts, since one of them replaces the clipboard it hands out.
+func Install(a fyne.App) {
 	installNonASCIIKeyboard()
+	installClipboard(a)
 }
