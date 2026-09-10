@@ -25,6 +25,32 @@ type Hub interface {
 	HubBroadcaster
 }
 
+// FiberConfig is the configuration the app is built with. It lives here
+// rather than in main.go so the handler tests run against the same one:
+// Immutable is a correctness setting, not a tuning knob, and a test app
+// without it would not exercise what production does.
+func FiberConfig() fiber.Config {
+	return fiber.Config{
+		// c.Params() hands back a string pointing into the request buffer,
+		// which fiber recycles as soon as the handler returns. Anything the
+		// manager keeps past that - a client's ServerID is taken straight
+		// from the route - would then read as whatever the next request put
+		// in that buffer ("i-sett", a slice of some later .../i-settings
+		// path). This app answers a handful of requests per minute, so the
+		// allocation the immutable mode costs is worth removing the whole
+		// class of bug rather than copying at each call site.
+		Immutable: true,
+		ErrorHandler: func(c fiber.Ctx, err error) error {
+			code := fiber.StatusInternalServerError
+			var fe *fiber.Error
+			if errors.As(err, &fe) {
+				code = fe.Code
+			}
+			return c.Status(code).JSON(ErrorResponse{Error: err.Error()})
+		},
+	}
+}
+
 // NewHandlers creates a Handlers instance.
 func NewHandlers(mgr *Manager, hub Hub) *Handlers {
 	return &Handlers{mgr: mgr, hub: hub}

@@ -16,7 +16,7 @@ import (
 func newTestAPI(t *testing.T) (*fiber.App, *Manager) {
 	t.Helper()
 	m := newClientManager(t)
-	app := fiber.New()
+	app := fiber.New(FiberConfig())
 	NewHandlers(m, nil).RegisterRoutes(app)
 	return app, m
 }
@@ -209,5 +209,44 @@ func TestStartingARunningServerIsAConflict(t *testing.T) {
 	status, body = call(t, app, http.MethodPost, "/api/servers/s1/stop", "")
 	if status != http.StatusConflict {
 		t.Errorf("stop: status = %d, want 409 (%s)", status, body)
+	}
+}
+
+// A client's ServerID is taken straight off the route and kept in the config
+// for as long as the client exists, which is exactly the shape that broke
+// once: fiber hands route parameters back as strings pointing into the
+// request buffer it recycles after the handler returns, so without
+// FiberConfig's Immutable the stored id came back as a slice of an unrelated
+// later request ("i-sett", off some .../i-settings path) while the file on
+// disk, written before the recycling, still looked right.
+//
+// app.Test does not recycle contexts the way a real listener does, so the
+// traffic below does not reproduce that corruption - only a running server
+// did. This guards the invariant the fix restored, not the mechanism.
+func TestStoredClientServerIDSurvivesLaterRequests(t *testing.T) {
+	app, m := newTestAPI(t)
+
+	status, body := call(t, app, http.MethodPost, "/api/servers/s1/clients", `{"name":"laptop"}`)
+	if status != http.StatusOK {
+		t.Fatalf("add client: %d %s", status, body)
+	}
+
+	var added ClientResult
+	if err := json.Unmarshal(body, &added); err != nil {
+		t.Fatal(err)
+	}
+
+	for range 20 {
+		call(t, app, http.MethodPut, "/api/servers/s1/clients/"+added.Client.ID+"/i-settings",
+			`{"apply_i_settings":false}`)
+		call(t, app, http.MethodGet, "/api/servers/s1/info", "")
+	}
+
+	stored, ok := m.getClientInServer("s1", added.Client.ID)
+	if !ok {
+		t.Fatal("client vanished from its server")
+	}
+	if stored.ServerID != "s1" {
+		t.Errorf("stored ServerID = %q, want \"s1\"", stored.ServerID)
 	}
 }

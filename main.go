@@ -48,15 +48,7 @@ func main() {
 	go hub.StartTrafficUpdates()
 
 	// Build Fiber app
-	app := fiber.New(fiber.Config{
-		ErrorHandler: func(c fiber.Ctx, err error) error {
-			code := fiber.StatusInternalServerError
-			if fe, ok := err.(*fiber.Error); ok {
-				code = fe.Code
-			}
-			return c.Status(code).JSON(fiber.Map{"error": err.Error()})
-		},
-	})
+	app := fiber.New(internal.FiberConfig())
 
 	app.Use(recover.New())
 	app.Use(logger.New())

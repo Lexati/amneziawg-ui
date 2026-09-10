@@ -10,9 +10,16 @@ Placement of backend files in `internal` directory.
 
 Placement of frontend files in `web-ui` directory: `main.go` is the entry
 point and the UI lives in the `web-ui/internal/ui` package, which exports only
-`New`, `NewDarkTheme` and the `UI` type's `Build`/`Start`. Wire types shared
-with the backend live in `web-ui/api` and are pulled into the root module via
-a `replace` directive - add new request/response structs there, never twice.
+`New`, `NewDarkTheme` and the `UI` type's `Build`/`Start`.
+
+`web-ui/api` is what the two sides share, pulled into the root module via a
+`replace` directive: the wire structs, and the AmneziaWG rules that go with
+them - limits, `Validate`, `ValidateCPS`, `GenerateObfuscation`. Anything both
+the create form and the backend need goes there, never twice; a rule stated in
+two places is a rule that drifts, and the user sees it as "the form let me,
+the server did not". The backend's `validateObfuscationParams` and
+`validateISettings` are thin wrappers that turn the shared problem lists into
+one error.
 
 The one other frontend package is `web-ui/internal/fixes`: workarounds for
 upstream bugs in fyne and its wasm driver, one per file, each documenting the
@@ -43,8 +50,12 @@ In the project root directory, run command:
 
 # Browser tests
 The frontend is one WebAssembly canvas, so the browser tests in `e2e` click by
-coordinate and assert against the REST API. They need a running instance -
-see `e2e/README.md` - and are run with:
+coordinate and assert against the REST API. They expect an instance with no
+servers configured and build state across the specs, so `make e2e` provisions
+one itself: it recreates the `awgui-test` container from an empty volume on
+port 51836 first (see `e2e/README.md`). That instance is deliberately separate
+from the stack `make run` leaves behind - the reset must never discard the
+servers you are working on. `make e2e-down` removes it.
 ```sh
   make e2e
 ```

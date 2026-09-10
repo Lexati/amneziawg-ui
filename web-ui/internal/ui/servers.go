@@ -7,7 +7,6 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
@@ -197,12 +196,9 @@ func (c *serverCard) setRunning(start bool) {
 }
 
 func (c *serverCard) confirmDelete() {
-	dialog.ShowConfirm("Delete server",
+	c.ui.showConfirm("Delete server",
 		fmt.Sprintf("Delete %q and all of its clients?", c.server.Name),
-		func(confirmed bool) {
-			if !confirmed {
-				return
-			}
+		func() {
 			go func() {
 				if err := c.ui.backend.DeleteServer(c.server.ID); err != nil {
 					c.ui.fail(err)
@@ -211,5 +207,5 @@ func (c *serverCard) confirmDelete() {
 				c.ui.ok("Server %q deleted", c.server.Name)
 				c.ui.reloadServers()
 			}()
-		}, c.ui.win)
+		})
 }

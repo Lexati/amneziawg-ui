@@ -64,9 +64,58 @@ build-server: check-go ## Build only the server; it serves the bundle already in
 exec: ## Execute a command inside the container
 	docker compose exec app sh
 
+##@ Browser tests
+
+# The Playwright suite drives the real WebAssembly UI and asserts against the
+# REST API. It expects an instance with no servers configured and builds state
+# across the specs (02 creates the server 03 adds a client to), so it needs a
+# clean backend on every run.
+#
+# That backend is deliberately its own container, volume and port rather than
+# the stack "make run" leaves behind: wiping the state before a test run must
+# never throw away the servers you are working on.
+E2E_IMAGE  ?= awgui-test
+E2E_NAME   ?= awgui-test
+E2E_VOLUME ?= awgui-test-data
+E2E_PORT   ?= 51836
+E2E_URL    ?= http://localhost:$(E2E_PORT)
+# base64 of the SHA-256 of "changeme" - the password the specs log in with.
+E2E_PASSWORD ?= BXugPWxEEEhj3HNh/kV4ll0YhzYPkKCJWILlimJI/IY=
+# How long to wait for the fresh container to answer, in seconds.
+E2E_TIMEOUT ?= 120
+
 .PHONY: e2e
-e2e: ## Run the Playwright browser tests against a running instance (see e2e/README.md)
-	cd e2e && npm install --no-audit --no-fund && npx playwright test
+e2e: e2e-reset ## Rebuild the test instance from an empty volume and run the browser tests
+	cd e2e && npm install --no-audit --no-fund && AWG_URL=$(E2E_URL) npx playwright test
+
+.PHONY: e2e-reset
+e2e-reset: ## Recreate the test instance from scratch, discarding every server it holds
+	@$(MAKE) --no-print-directory e2e-down
+	docker build -t $(E2E_IMAGE) .
+	docker run -d --name $(E2E_NAME) -p $(E2E_PORT):$(E2E_PORT)/tcp \
+		-e WEB_UI_PORT=$(E2E_PORT) -e WEB_UI_USER=admin -e 'WEB_UI_PASSWORD=$(E2E_PASSWORD)' \
+		-v $(E2E_VOLUME):/etc/amnezia \
+		--cap-add NET_ADMIN --cap-add SYS_MODULE --device /dev/net/tun \
+		--sysctl net.ipv4.ip_forward=1 --sysctl net.ipv4.conf.all.src_valid_mark=1 \
+		$(E2E_IMAGE)
+	@printf 'waiting for %s ' "$(E2E_URL)"; \
+	deadline=$$(( $$(date +%s) + $(E2E_TIMEOUT) )); \
+	until curl -fsS -o /dev/null "$(E2E_URL)/status" 2>/dev/null; do \
+		if [ "$$(date +%s)" -ge "$$deadline" ]; then \
+			echo "timed out after $(E2E_TIMEOUT)s"; \
+			docker logs --tail 50 $(E2E_NAME); \
+			exit 1; \
+		fi; \
+		printf '.'; sleep 2; \
+	done; \
+	echo ' ready'
+
+# Separate from e2e-reset so a finished run can be cleaned up without starting
+# another instance, and so the volume is gone even if the tests failed.
+.PHONY: e2e-down
+e2e-down: ## Remove the test instance and its volume
+	@docker rm -f $(E2E_NAME) >/dev/null 2>&1 || true
+	@docker volume rm -f $(E2E_VOLUME) >/dev/null 2>&1 || true
 
 ##@ Profiling
 

@@ -13,7 +13,6 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -61,6 +60,12 @@ type UI struct {
 	// webUIPort is the panel's own listener, reported by /api/system/status.
 	// The create form treats it as taken like any server's port.
 	webUIPort int
+
+	// serverDefaultMTU is DEFAULT_MTU as the backend was started with it,
+	// also from /api/system/status. The create form starts from it rather
+	// than from a number of its own, so the operator's setting is what a new
+	// server actually gets.
+	serverDefaultMTU int
 
 	toastSeq int
 }
@@ -180,7 +185,7 @@ func (u *UI) warn(format string, args ...any) {
 }
 
 func (u *UI) fail(err error) {
-	fyne.Do(func() { dialog.ShowError(err, u.win) })
+	fyne.Do(func() { u.showError(err) })
 }
 
 // setTransport drives the status light: green while the Socket.IO feed is
@@ -218,6 +223,20 @@ func (u *UI) setPublicIP(ip string) {
 		u.publicIP.Text = ip
 		u.publicIP.Refresh()
 	})
+}
+
+// serverMTU is the MTU a new server starts from: what the backend was
+// configured with, or the built-in default while the status call is still in
+// flight or reported something outside the range servers are allowed.
+func (u *UI) serverMTU() int {
+	u.mu.Lock()
+	mtu := u.serverDefaultMTU
+	u.mu.Unlock()
+
+	if mtu < api.MinMTU || mtu > api.MaxMTU {
+		return defaultMTU
+	}
+	return mtu
 }
 
 // ── Data loading ─────────────────────────────────────────────────────────────
@@ -258,11 +277,12 @@ func (u *UI) loadSystemStatus() {
 	}
 
 	port, err := strconv.Atoi(strings.TrimSpace(status.Environment.WebUIPort))
+	u.mu.Lock()
 	if err == nil {
-		u.mu.Lock()
 		u.webUIPort = port
-		u.mu.Unlock()
 	}
+	u.serverDefaultMTU = status.Environment.DefaultMTU
+	u.mu.Unlock()
 
 	u.setSummary(fmt.Sprintf("%d/%d servers running · %d clients",
 		status.ActiveServers, status.TotalServers, status.TotalClients))
@@ -400,6 +420,26 @@ func (b *pointerButton) Cursor() desktop.Cursor {
 		return desktop.DefaultCursor
 	}
 	return desktop.PointerCursor
+}
+
+// newEntry is the single-line entry this page uses everywhere a value is
+// short enough to fit its field.
+//
+// A stock widget.NewEntry() keeps an internal container.Scroll around its
+// text, which makes it the innermost fyne.Scrollable under the pointer: the
+// driver hands it every wheel event and it silently drops the ones it cannot
+// use, so the page stops scrolling wherever the cursor happens to rest on an
+// input. Turning that inner scroller off (which needs both fields - see
+// entryRenderer.Layout in fyne) leaves no Scrollable in the way and the wheel
+// reaches the page scroll again.
+//
+// The cost is that such an entry reports its whole text as its minimum width,
+// so this is deliberately not used for the I1-I5 fields, whose values are
+// megabyte-scale blobs.
+func newEntry() *widget.Entry {
+	e := &widget.Entry{Wrapping: fyne.TextWrapOff, Scroll: fyne.ScrollNone}
+	e.ExtendBaseWidget(e)
+	return e
 }
 
 func smallText(text string, c color.Color) *canvas.Text {

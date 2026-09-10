@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -8,7 +9,6 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
@@ -101,10 +101,7 @@ func (u *UI) setClientSuspended(serverID string, client api.Client, suspend bool
 		question = fmt.Sprintf("Suspend %q? The client loses its connection until reactivated.", client.Name)
 	}
 
-	dialog.ShowConfirm("Change client state", question, func(confirmed bool) {
-		if !confirmed {
-			return
-		}
+	u.showConfirm("Change client state", question, func() {
 		go func() {
 			var err error
 			if suspend {
@@ -123,14 +120,11 @@ func (u *UI) setClientSuspended(serverID string, client api.Client, suspend bool
 			}
 			u.reloadServers()
 		}()
-	}, u.win)
+	})
 }
 
 func (u *UI) confirmDeleteClient(serverID string, client api.Client) {
-	dialog.ShowConfirm("Delete client", fmt.Sprintf("Delete %q?", client.Name), func(confirmed bool) {
-		if !confirmed {
-			return
-		}
+	u.showConfirm("Delete client", fmt.Sprintf("Delete %q?", client.Name), func() {
 		go func() {
 			if err := u.backend.DeleteClient(serverID, client.ID); err != nil {
 				u.fail(err)
@@ -139,14 +133,14 @@ func (u *UI) confirmDeleteClient(serverID string, client api.Client) {
 			u.ok("Client %q deleted", client.Name)
 			u.reloadServers()
 		}()
-	}, u.win)
+	})
 }
 
 // showClientDialog opens the add/edit form. A nil client means "add new".
 func (u *UI) showClientDialog(server api.Server, client *api.Client) {
 	editing := client != nil
 
-	name := widget.NewEntry()
+	name := newEntry()
 	allowedIPs := entryWithText("0.0.0.0/0, ::/0")
 	suspendAt := entryWithPlaceholder(suspendLayout)
 
@@ -189,8 +183,12 @@ func (u *UI) showClientDialog(server api.Server, client *api.Client) {
 	for i, entry := range iEntries {
 		iBox.Add(labeled(fmt.Sprintf("I%d", i+1), entry))
 	}
-	iNote := widget.NewLabel("I-settings are client-only parameters; empty values are omitted from the generated config. " +
-		"If I1 is empty, all I-settings are ignored. A config that grows past the QR code limit can still be downloaded as a file.")
+	iNote := widget.NewLabel("Each value describes one packet sent before the handshake, as a sequence of tags: " +
+		"<b 0x...> static bytes, <t> a 4-byte timestamp, <r N> random bytes, <rc N> random letters, <rd N> random digits " +
+		"(N up to 1000). Example: <b 0xd100000001><rc 8><t><r 50>. These are client-only parameters, they are never " +
+		"written into the server config; empty values are skipped, and an empty I1 turns the whole set off. Keep each " +
+		"packet under about 1472 bytes or it is fragmented on the way out, which is the signature this is meant to avoid. " +
+		"A config that grows past the QR code limit can still be downloaded as a file.")
 	iNote.Wrapping = fyne.TextWrapWord
 	iNote.TextStyle = fyne.TextStyle{Italic: true}
 	iBox.Add(iNote)
@@ -232,16 +230,26 @@ func (u *UI) showClientDialog(server api.Server, client *api.Client) {
 		confirm = "Save"
 	}
 
-	form := dialog.NewCustomConfirm(title, confirm, "Cancel", u.scrolled(content), func(save bool) {
-		if !save {
-			return
-		}
-
+	u.showFormDialog(title, confirm, "Cancel", u.scrolled(content), u.dialogSize(760, 620), func() bool {
 		settings := api.ISettings{}
+		var problems []string
 		for i, entry := range iEntries {
-			if value := strings.TrimSpace(entry.Text); value != "" {
-				settings[fmt.Sprintf("i%d", i+1)] = value
+			value := strings.TrimSpace(entry.Text)
+			if value == "" {
+				continue
 			}
+			key := fmt.Sprintf("I%d", i+1)
+			if problem := api.ValidateCPS(key, value); problem != "" {
+				problems = append(problems, problem)
+				continue
+			}
+			settings[strings.ToLower(key)] = value
+		}
+		// Only worth checking what will actually be written: with the box
+		// unticked the values are kept but never reach a config.
+		if applyI.Checked && len(problems) > 0 {
+			u.fail(errors.New(strings.Join(problems, "\n")))
+			return false
 		}
 
 		routes := strings.TrimSpace(allowedIPs.Text)
@@ -251,13 +259,11 @@ func (u *UI) showClientDialog(server api.Server, client *api.Client) {
 
 		if editing {
 			u.saveClient(server.ID, *client, routes, applyI.Checked, settings, strings.TrimSpace(suspendAt.Text))
-			return
+			return true
 		}
 		u.addClient(server, strings.TrimSpace(name.Text), routes, applyI.Checked, settings)
-	}, u.win)
-
-	form.Resize(u.dialogSize(760, 620))
-	form.Show()
+		return true
+	})
 }
 
 func (u *UI) addClient(server api.Server, name, allowedIPs string, applyI bool, settings api.ISettings) {

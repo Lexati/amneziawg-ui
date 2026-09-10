@@ -84,7 +84,7 @@ func TestGeneratedParamsEnable31(t *testing.T) {
 	if !p.RandomTrailers || !p.DisableCookies {
 		t.Fatalf("generated params should enable 3.1 switches: %+v", p)
 	}
-	if err := validateObfuscationParams(&p); err != nil {
+	if err := validateObfuscationParams(&p, 1280); err != nil {
 		t.Fatalf("generated params invalid: %v", err)
 	}
 }

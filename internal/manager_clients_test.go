@@ -60,7 +60,9 @@ func TestAddClientDetachesObfuscationParamsFromTheServer(t *testing.T) {
 func TestClientLivesOnlyInItsServer(t *testing.T) {
 	m := newClientManager(t)
 
-	client, _, err := m.AddClient("s1", "alice", true, map[string]string{"i2": "custom"}, "")
+	const signature = "<b 0xcafe><r 20>"
+
+	client, _, err := m.AddClient("s1", "alice", true, map[string]string{"i2": signature}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +83,7 @@ func TestClientLivesOnlyInItsServer(t *testing.T) {
 	all[0].Name = "mutated"
 	all[0].ISettings["i2"] = "mutated"
 	stored, _ := m.getClientInServer("s1", client.ID)
-	if stored.Name != "alice" || stored.ISettings["i2"] != "custom" {
+	if stored.Name != "alice" || stored.ISettings["i2"] != signature {
 		t.Errorf("caller's edits leaked into the config: %+v", stored)
 	}
 

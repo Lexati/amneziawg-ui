@@ -2,7 +2,6 @@ package ui
 
 import (
 	"fmt"
-	"math/rand"
 	"regexp"
 	"strconv"
 	"strings"
@@ -19,8 +18,12 @@ import (
 var (
 	subnetPattern = regexp.MustCompile(`^(\d{1,3}\.){3}\d{1,3}/\d{1,2}$`)
 	ipPattern     = regexp.MustCompile(`^(\d{1,3}\.){3}\d{1,3}$`)
-	rangePattern  = regexp.MustCompile(`^\d+(-\d+)?$`)
 )
+
+// What the engine accepts, and the checks against it, live in the shared api
+// package next to the types they describe - the form and the backend call the
+// same copy. What stays here is presentation: the recommended values the
+// captions carry, as the amneziawg-linux-kernel-module README gives them.
 
 // The values the simple mode fills in on the user's behalf, and the ones the
 // advanced fields start out with - declared once so the two modes can never
@@ -28,8 +31,10 @@ var (
 const (
 	defaultPort   = "54844"
 	defaultSubnet = "10.0.0.0/24"
-	defaultMTU    = 1420
 	defaultDNS    = "8.8.8.8,1.1.1.1"
+	// The MTU used until /api/system/status reports what the backend was
+	// configured with; the range it has to be in lives in api.
+	defaultMTU = 1420
 )
 
 // serverForm is the collapsible "Create New VPN Server" panel. It has two
@@ -45,6 +50,10 @@ type serverForm struct {
 	dns      *widget.Entry
 	endpoint *widget.Entry
 
+	// mtuSeed is the last MTU the form itself wrote into the field, so it can
+	// tell its own value from one the user typed.
+	mtuSeed string
+
 	advancedMode *widget.Check
 	extras       *widget.Form
 	simpleNote   *widget.Label
@@ -56,9 +65,10 @@ type serverForm struct {
 	s1, s2, s3, s4 *widget.Entry
 	h1, h2, h3, h4 *widget.Entry
 
-	randomTrailers *widget.Check
-	disableCookies *widget.Check
-	headerKey      *widget.Entry
+	distinctPaddings *widget.Check
+	randomTrailers   *widget.Check
+	disableCookies   *widget.Check
+	headerKey        *widget.Entry
 
 	advanced []*advancedField
 
@@ -73,18 +83,24 @@ type serverForm struct {
 
 // advancedField is one of the optional AWG 3.x per-side timing knobs.
 type advancedField struct {
-	key   string
-	hint  string
-	entry *widget.Entry
+	key string
+	// limits is the accepted range, shown in the caption; hint is the engine
+	// default plus an example, shown as the placeholder once the field is
+	// emptied.
+	limits string
+	hint   string
+	entry  *widget.Entry
 }
 
 func newServerForm(u *UI) *serverForm {
 	f := &serverForm{ui: u}
 
 	f.name = entryWithPlaceholder("My VPN Server")
-	f.port = entryWithText(defaultPort)
+	f.port = numberEntry(defaultPort, "1-65535")
 	f.subnet = entryWithText(defaultSubnet)
-	f.mtu = entryWithText(strconv.Itoa(defaultMTU))
+	f.mtuSeed = strconv.Itoa(u.serverMTU())
+	f.mtu = numberEntry(f.mtuSeed, fmt.Sprintf("%d-%d", api.MinMTU, api.MaxMTU))
+
 	f.dns = entryWithText(defaultDNS)
 	f.endpoint = entryWithPlaceholder("leave empty to use the auto-detected public IP")
 
@@ -102,11 +118,13 @@ func newServerForm(u *UI) *serverForm {
 	// them only exist in the advanced mode and keep the usual form rows.
 	basics := container.NewGridWithColumns(2,
 		labeled("Server name", f.name),
-		labeled("Port", f.port),
+		labeled("Port (1-65535)", f.port),
 	)
 	f.extras = widget.NewForm(
 		&widget.FormItem{Text: "Subnet", Widget: f.subnet, HintText: "e.g. 10.0.0.0/24"},
-		&widget.FormItem{Text: "MTU", Widget: f.mtu, HintText: "1280-1440; 1420-1440 performs best on most links"},
+		&widget.FormItem{Text: "MTU (recommended 1280)", Widget: f.mtu,
+			HintText: "1280-1440. AmneziaWG 3.x pads every packet, so above about 1425 a full-size one no longer " +
+				"fits a standard 1500-byte path and gets fragmented"},
 		&widget.FormItem{Text: "DNS servers", Widget: f.dns, HintText: "comma-separated IPs, e.g. 8.8.8.8,1.1.1.1"},
 		&widget.FormItem{Text: "Endpoint", Widget: f.endpoint, HintText: "custom IP or hostname clients connect to"},
 	)
@@ -170,10 +188,33 @@ func (f *serverForm) toggleOpen() {
 	// Offer a port nothing is listening on yet, so creating a second server is
 	// still a matter of typing a name and pressing the button.
 	f.port.SetText(f.nextFreePort())
+	f.seedMTU()
 
 	f.body.Show()
 	f.toggle.SetIcon(theme.MenuDropUpIcon())
 	f.ui.clampScroll()
+}
+
+// seedMTU puts the MTU the backend was configured with into the form, along
+// with paddings that fit it.
+//
+// The widgets are built before /api/system/status has answered, so the first
+// open is where the operator's DEFAULT_MTU can first be honoured. It only ever
+// overwrites its own last value: once the MTU has been typed over, the form is
+// the user's and reopening it must not undo that.
+func (f *serverForm) seedMTU() {
+	if f.mtu.Text != f.mtuSeed {
+		return
+	}
+
+	mtu := f.ui.serverMTU()
+	f.mtuSeed = strconv.Itoa(mtu)
+	f.mtu.SetText(f.mtuSeed)
+
+	padding, _, _, _ := api.RecommendedPaddings(mtu, false)
+	for _, entry := range []*widget.Entry{f.s1, f.s2, f.s3, f.s4} {
+		entry.SetText(strconv.Itoa(padding))
+	}
 }
 
 func (f *serverForm) collapse() {
@@ -220,35 +261,62 @@ func (f *serverForm) showObfuscation() {
 // numbers first, then the 3.1 switches, the header protection key and the
 // optional per-side timing knobs.
 func (f *serverForm) buildObfuscation() fyne.CanvasObject {
-	f.jc = entryWithText("4")
-	f.jmin = entryWithText("8")
-	f.jmax = entryWithText("80")
-	f.s1 = entryWithText("50")
-	f.s2 = entryWithText("60")
-	f.s3 = entryWithText("20")
-	f.s4 = entryWithText("16")
-	f.h1 = entryWithText("1000")
-	f.h2 = entryWithText("2000")
-	f.h3 = entryWithText("3000")
-	f.h4 = entryWithText("4000")
+	// The paddings start on a value the generator would pick for the MTU in
+	// the field above rather than on a fixed number, so opening the advanced
+	// mode and pressing Create straight away cannot hand out a padding too
+	// big for that MTU.
+	seed, _, _, _ := api.RecommendedPaddings(f.ui.serverMTU(), false)
+	padding := strconv.Itoa(seed)
 
+	f.jc = numberEntry("8", "1-65535")
+	f.jmin = numberEntry("8", "1-65535")
+	f.jmax = numberEntry("80", "1-65535")
+	f.s1 = numberEntry(padding, "12-65535")
+	f.s2 = numberEntry(padding, "12-65535")
+	f.s3 = numberEntry(padding, "12-65535")
+	f.s4 = numberEntry(padding, "12-65535")
+	f.h1 = numberEntry("1", "1-4294967295")
+	f.h2 = numberEntry("2", "1-4294967295")
+	f.h3 = numberEntry("3", "1-4294967295")
+	f.h4 = numberEntry("4", "1-4294967295")
+
+	// Captions carry the recommended value, placeholders the accepted range:
+	// the range only matters once you are deliberately leaving the
+	// recommendation, and the field shows it as soon as it is cleared.
 	junk := container.NewGridWithColumns(3,
-		labeled("Jc (4-12)", f.jc),
+		labeled("Jc (recommended 4-12)", f.jc),
 		labeled("Jmin (recommended 8)", f.jmin),
 		labeled("Jmax (recommended 80)", f.jmax),
 	)
 	sizes := container.NewGridWithColumns(4,
-		labeled("S1 (15-150)", f.s1),
-		labeled("S2 (15-150)", f.s2),
-		labeled("S3 (12-256)", f.s3),
-		labeled("S4 (12-32)", f.s4),
+		labeled("S1 (recommended 15-150)", f.s1),
+		labeled("S2 (same as S1)", f.s2),
+		labeled("S3 (same as S1)", f.s3),
+		labeled("S4 (same as S1)", f.s4),
 	)
 	headers := container.NewGridWithColumns(4,
-		labeled("H1", f.h1),
-		labeled("H2", f.h2),
-		labeled("H3", f.h3),
-		labeled("H4", f.h4),
+		labeled("H1 (recommended 1)", f.h1),
+		labeled("H2 (recommended 2)", f.h2),
+		labeled("H3 (recommended 3)", f.h3),
+		labeled("H4 (recommended 4)", f.h4),
 	)
+	f.distinctPaddings = widget.NewCheck("Roll S1-S4 separately instead of one value for all four", nil)
+
+	sizesNote := widget.NewLabel("At least 12 for each padding is the one hard rule here - header protection is always " +
+		"on in this app and takes its 12-byte nonce from the start of that padding. H1-H4 at 1/2/3/4 follows from the " +
+		"same thing: header protection encrypts the message type itself, so custom headers change nothing an observer " +
+		"can see (without header protection the advice is the opposite - four distinct values in 5-2147483647).\n\n" +
+		"One value for all four paddings is what the docs recommend while RandomTrailers is on, because it is what keeps " +
+		"the receiver from reading one message type as another. It does leave the gaps between the types at WireGuard's " +
+		"own 148/92/64/32, which an observer can recover from the smallest packet of each type; rolling them separately " +
+		"hides that, and gives up the receiver's margin in exchange.")
+	sizesNote.Wrapping = fyne.TextWrapWord
+	sizesNote.TextStyle = fyne.TextStyle{Italic: true}
+
+	limitsNote := widget.NewLabel("The placeholders are what the engine accepts, not what is wise. On top of them S1 must " +
+		"fit MTU-148, S2 must fit MTU-92, S1+56 must not equal S2, and H1-H4 must all differ.")
+	limitsNote.Wrapping = fyne.TextWrapWord
+	limitsNote.TextStyle = fyne.TextStyle{Italic: true}
 
 	random := button("Generate random parameters", theme.ViewRefreshIcon(), f.randomise)
 
@@ -270,18 +338,18 @@ func (f *serverForm) buildObfuscation() fyne.CanvasObject {
 	keyNote.TextStyle = fyne.TextStyle{Italic: true}
 
 	f.advanced = []*advancedField{
-		{key: "ContentPaddingAddition", hint: "e.g. 0-64"},
-		{key: "RekeyAfterTime", hint: "default 120, e.g. 100-140"},
-		{key: "RekeyTimeout", hint: "default 5, e.g. 4-7"},
-		{key: "RejectAfterTime", hint: "default 180, e.g. 160-200"},
-		{key: "KeepaliveTimeout", hint: "default 10, e.g. 8-12"},
-		{key: "MaxHandshakeAttempts", hint: "default 18, e.g. 14-20"},
-		{key: "PersistentKeepalive", hint: "default 25, e.g. 22-30"},
+		{key: "ContentPaddingAddition", limits: "0-65535", hint: "off by default, e.g. 0-64"},
+		{key: "RekeyAfterTime", limits: "0-65535 s", hint: "default 120, e.g. 100-140"},
+		{key: "RekeyTimeout", limits: "0-65535 s", hint: "default 5, e.g. 4-7"},
+		{key: "RejectAfterTime", limits: "0-65535 s", hint: "default 180, e.g. 160-200"},
+		{key: "KeepaliveTimeout", limits: "0-65535 s", hint: "default 10, e.g. 8-12"},
+		{key: "MaxHandshakeAttempts", limits: "0-65535", hint: "default 18, e.g. 14-20"},
+		{key: "PersistentKeepalive", limits: "0-65535 s", hint: "default 25, e.g. 22-30"},
 	}
 	advancedGrid := container.NewGridWithColumns(2)
 	for _, field := range f.advanced {
 		field.entry = entryWithPlaceholder(field.hint)
-		advancedGrid.Add(labeled(field.key, field.entry))
+		advancedGrid.Add(labeled(fmt.Sprintf("%s (%s)", field.key, field.limits), field.entry))
 	}
 
 	advancedNote := widget.NewLabel("Optional AWG 3.x timing knobs (an integer or an \"a-b\" range). They are applied " +
@@ -291,7 +359,7 @@ func (f *serverForm) buildObfuscation() fyne.CanvasObject {
 
 	box := container.NewVBox(
 		sectionTitle("Obfuscation parameters"),
-		junk, sizes, headers,
+		junk, sizes, f.distinctPaddings, headers, sizesNote, limitsNote,
 		container.NewHBox(random),
 		separator(),
 		togglesNote, f.randomTrailers, f.disableCookies,
@@ -308,7 +376,7 @@ func (f *serverForm) buildObfuscation() fyne.CanvasObject {
 // more likely to have deliberately set (Jmin/Jmax, the switches, the timing
 // knobs) alone.
 func (f *serverForm) randomise() {
-	p := randomObfuscation(f.mtuOrDefault())
+	p := api.GenerateObfuscation(f.mtuOrDefault(), f.distinctPaddings.Checked)
 
 	f.jc.SetText(strconv.Itoa(p.Jc))
 	f.s1.SetText(strconv.Itoa(p.S1))
@@ -321,62 +389,12 @@ func (f *serverForm) randomise() {
 	f.h4.SetText(strconv.Itoa(p.H4))
 }
 
-// randomObfuscation rolls a full AmneziaWG 3.1 parameter set that passes
-// validateObfuscation for the given MTU. The header protection key is left
-// empty on purpose: the backend generates one whenever obfuscation is on.
-func randomObfuscation(mtu int) *api.ObfuscationParams {
-	p := &api.ObfuscationParams{
-		Jc:             randomBetween(4, 12),
-		Jmin:           8,
-		Jmax:           80,
-		S3:             randomBetween(12, 256), // header protection needs >= 12
-		S4:             randomBetween(12, 32),  // and S4 tops out at 32
-		RandomTrailers: true,
-		DisableCookies: true,
-	}
-
-	// S1 and S2 are bounded by the MTU as well, and must not end up exactly
-	// 56 apart - the one combination the engine rejects outright.
-	for {
-		p.S1 = randomBetween(15, min(150, mtu-148))
-		p.S2 = randomBetween(15, min(150, mtu-92))
-		if p.S1+56 != p.S2 {
-			break
-		}
-	}
-
-	// H1-H4 have to be four distinct values.
-	seen := map[int]bool{}
-	values := make([]int, 0, 4)
-	for len(values) < 4 {
-		candidate := rand.Intn(1000000) + 1000
-		if seen[candidate] {
-			continue
-		}
-		seen[candidate] = true
-		values = append(values, candidate)
-	}
-	p.H1, p.H2, p.H3, p.H4 = values[0], values[1], values[2], values[3]
-
-	return p
-}
-
-// randomBetween returns a value in [lo, hi], collapsing to lo when an MTU too
-// small for the range has squeezed the window shut - the MTU check reports
-// that on its own, and this must not panic in the meantime.
-func randomBetween(lo, hi int) int {
-	if hi <= lo {
-		return lo
-	}
-	return rand.Intn(hi-lo+1) + lo
-}
-
 // mtuOrDefault reads the MTU field for the callers that only need a plausible
 // number (parameter generation); build() does the reporting parse.
 func (f *serverForm) mtuOrDefault() int {
 	mtu, err := strconv.Atoi(strings.TrimSpace(f.mtu.Text))
-	if err != nil || mtu < 1280 || mtu > 1440 {
-		return defaultMTU
+	if err != nil || mtu < api.MinMTU || mtu > api.MaxMTU {
+		return f.ui.serverMTU()
 	}
 	return mtu
 }
@@ -483,8 +501,8 @@ func (f *serverForm) build() (api.CreateServerRequest, []string) {
 	}
 
 	mtu, err := strconv.Atoi(strings.TrimSpace(f.mtu.Text))
-	if err != nil || mtu < 1280 || mtu > 1440 {
-		problems = append(problems, "MTU must be between 1280 and 1440")
+	if err != nil || mtu < api.MinMTU || mtu > api.MaxMTU {
+		problems = append(problems, fmt.Sprintf("MTU must be between %d and %d", api.MinMTU, api.MaxMTU))
 	}
 	req.MTU = mtu
 
@@ -514,16 +532,19 @@ func (f *serverForm) build() (api.CreateServerRequest, []string) {
 // "keep it but hide it".
 func (f *serverForm) generated(name string, port int) api.CreateServerRequest {
 	autoStart, obfuscation := true, true
+	mtu := f.ui.serverMTU()
 	return api.CreateServerRequest{
-		Name:              name,
-		Port:              port,
-		Subnet:            f.nextFreeSubnet(),
-		MTU:               defaultMTU,
-		DNS:               defaultDNS,
-		Endpoint:          "", // the backend fills in the detected public IP
-		AutoStart:         &autoStart,
+		Name:      name,
+		Port:      port,
+		Subnet:    f.nextFreeSubnet(),
+		MTU:       mtu,
+		DNS:       defaultDNS,
+		Endpoint:  "", // the backend fills in the detected public IP
+		AutoStart: &autoStart,
+		// The simple mode has no switch to offer, so it takes the shape the
+		// AmneziaWG docs recommend: one padding for all four message types.
 		Obfuscation:       &obfuscation,
-		ObfuscationParams: randomObfuscation(defaultMTU),
+		ObfuscationParams: api.GenerateObfuscation(mtu, false),
 	}
 }
 
@@ -561,10 +582,6 @@ func (f *serverForm) obfuscationParams(mtu int) (*api.ObfuscationParams, []strin
 		if value == "" {
 			continue
 		}
-		if !rangePattern.MatchString(value) {
-			problems = append(problems, fmt.Sprintf("%s (%s) must be an integer or an \"a-b\" range", field.key, value))
-			continue
-		}
 		switch field.key {
 		case "ContentPaddingAddition":
 			params.ContentPaddingAddition = value
@@ -583,43 +600,11 @@ func (f *serverForm) obfuscationParams(mtu int) (*api.ObfuscationParams, []strin
 		}
 	}
 
-	problems = append(problems, validateObfuscation(params, mtu)...)
+	// The knob strings above went in unchecked: api.Validate covers their
+	// format and range along with everything else, and reporting a problem
+	// once beats reporting it from two places in two wordings.
+	problems = append(problems, params.Validate(mtu)...)
 	return params, problems
-}
-
-// validateObfuscation mirrors the checks the backend performs, so an invalid
-// combination is caught before the request goes out.
-func validateObfuscation(p *api.ObfuscationParams, mtu int) []string {
-	var problems []string
-
-	if !(p.Jmin < p.Jmax && p.Jmax <= mtu) {
-		problems = append(problems, fmt.Sprintf("Jmin (%d) must be less than Jmax (%d), and Jmax <= MTU (%d)", p.Jmin, p.Jmax, mtu))
-	}
-	if p.Jmin >= mtu {
-		problems = append(problems, fmt.Sprintf("Jmin (%d) must be less than MTU (%d)", p.Jmin, mtu))
-	}
-	if !(p.S1 <= mtu-148 && p.S1 >= 15 && p.S1 <= 150) {
-		problems = append(problems, fmt.Sprintf("S1 (%d) must be in [15, 150] and <= MTU-148 (%d)", p.S1, mtu-148))
-	}
-	if !(p.S2 <= mtu-92 && p.S2 >= 15 && p.S2 <= 150) {
-		problems = append(problems, fmt.Sprintf("S2 (%d) must be in [15, 150] and <= MTU-92 (%d)", p.S2, mtu-92))
-	}
-	if p.S1+56 == p.S2 {
-		problems = append(problems, fmt.Sprintf("S1 + 56 (%d) must not equal S2 (%d)", p.S1+56, p.S2))
-	}
-	if p.S4 > 32 {
-		problems = append(problems, fmt.Sprintf("S4 (%d) must be in range [0, 32]", p.S4))
-	}
-
-	// Obfuscation is always AmneziaWG 3.x header protection, whose cipher
-	// takes its 12-byte nonce from the start of the padding.
-	for label, value := range map[string]int{"S1": p.S1, "S2": p.S2, "S3": p.S3, "S4": p.S4} {
-		if value < 12 {
-			problems = append(problems, fmt.Sprintf("%s (%d) must be at least 12 for AmneziaWG 3.x header protection", label, value))
-		}
-	}
-
-	return problems
 }
 
 func (f *serverForm) submit() {
@@ -660,14 +645,23 @@ func (f *serverForm) submit() {
 // ── Shared form helpers ──────────────────────────────────────────────────────
 
 func entryWithText(text string) *widget.Entry {
-	entry := widget.NewEntry()
+	entry := newEntry()
 	entry.SetText(text)
 	return entry
 }
 
 func entryWithPlaceholder(placeholder string) *widget.Entry {
-	entry := widget.NewEntry()
+	entry := newEntry()
 	entry.SetPlaceHolder(placeholder)
+	return entry
+}
+
+// numberEntry is a prefilled field that still shows its accepted range once
+// the value is cleared, which is exactly when the range is wanted.
+func numberEntry(text, limits string) *widget.Entry {
+	entry := newEntry()
+	entry.SetPlaceHolder(limits)
+	entry.SetText(text)
 	return entry
 }
 

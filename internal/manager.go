@@ -18,6 +18,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"amneziawg-web-ui/web-ui/api"
 )
 
 // Manager orchestrates all AmneziaWG operations.
@@ -324,95 +326,47 @@ func randomBase64Key() string {
 	return base64.StdEncoding.EncodeToString(b)
 }
 
-// awg3MinPadding is the minimum value AmneziaWG 3.0 requires for S1-S4 when
-// header protection is enabled: the cipher's 12-byte nonce is taken from the
-// start of the padding, so anything smaller can't fit it.
-const awg3MinPadding = 12
-
 // generateObfuscationParams generates a full set of AmneziaWG 3.1 obfuscation
 // parameters, including a header protection key. Obfuscation in this app is
 // always AmneziaWG 3.x - there's no more separate 1.0/1.5/2.0 mode.
+//
+// The parameters themselves come from the shared generator, so an API caller
+// that sends none gets the same shape the create form would have sent. Only
+// the two fields it cannot know are filled in here: the MTU, and a key from a
+// cryptographic source.
 func (m *Manager) generateObfuscationParams(mtu int) ObfuscationParams {
-	rng := rand.New(rand.NewSource(time.Now().UnixNano())) //nolint:gosec
-
-	s1Max := mtu - 148
-	if s1Max > 150 {
-		s1Max = 150
-	}
-	s1 := rng.Intn(s1Max-15+1) + 15
-
-	s2Max := mtu - 92
-	if s2Max > 150 {
-		s2Max = 150
-	}
-	var s2Candidates []int
-	for s := 15; s <= s2Max; s++ {
-		if s != s1+56 {
-			s2Candidates = append(s2Candidates, s)
-		}
-	}
-	s2 := s2Candidates[rng.Intn(len(s2Candidates))]
-
-	jmin := rng.Intn(mtu-2-4+1) + 4
-	jmax := jmin + 1 + rng.Intn(mtu-jmin)
-
-	return ObfuscationParams{
-		Jc:                  rng.Intn(9) + 4,
-		Jmin:                jmin,
-		Jmax:                jmax,
-		S1:                  s1,
-		S2:                  s2,
-		S3:                  rng.Intn(256-awg3MinPadding+1) + awg3MinPadding,
-		S4:                  rng.Intn(32-awg3MinPadding+1) + awg3MinPadding,
-		H1:                  rng.Intn(90001) + 10000,
-		H2:                  rng.Intn(100001) + 100000,
-		H3:                  rng.Intn(100001) + 200000,
-		H4:                  rng.Intn(100001) + 300000,
-		MTU:                 mtu,
-		HeaderProtectionKey: randomBase64Key(),
-		RandomTrailers:      true,
-		DisableCookies:      true,
-	}
+	p := api.GenerateObfuscation(mtu, false)
+	p.MTU = mtu
+	p.HeaderProtectionKey = randomBase64Key()
+	return *p
 }
 
-// validateObfuscationParams checks the AmneziaWG 3.0 header protection
-// requirement: S1-S4 must all be at least awg3MinPadding, since the cipher's
-// nonce is taken from the start of that padding. It also validates the
-// format of the optional client-side range tuning knobs, if any were
-// provided.
-func validateObfuscationParams(p *ObfuscationParams) error {
+// validateObfuscationParams rejects a parameter set awg(8) or amneziawg-go
+// would refuse later, when the failure would only show up as an interface
+// that will not come up. The rules live in the shared api package, next to
+// the type they describe, so the create form checks exactly these and the two
+// sides cannot drift apart.
+func validateObfuscationParams(p *ObfuscationParams, mtu int) error {
 	if p == nil {
 		return fmt.Errorf("obfuscation parameters are required")
 	}
-	for name, v := range map[string]int{"S1": p.S1, "S2": p.S2, "S3": p.S3, "S4": p.S4} {
-		if v < awg3MinPadding {
-			return fmt.Errorf("%s must be at least %d for AmneziaWG 3.0 header protection, got %d", name, awg3MinPadding, v)
-		}
-	}
-	for name, v := range map[string]string{
-		"ContentPaddingAddition": p.ContentPaddingAddition,
-		"RekeyAfterTime":         p.RekeyAfterTime,
-		"RekeyTimeout":           p.RekeyTimeout,
-		"RejectAfterTime":        p.RejectAfterTime,
-		"KeepaliveTimeout":       p.KeepaliveTimeout,
-		"MaxHandshakeAttempts":   p.MaxHandshakeAttempts,
-		"PersistentKeepalive":    p.PersistentKeepalive,
-	} {
-		if v != "" && !isValidUintRange(v) {
-			return fmt.Errorf("%s must be an integer or an \"a-b\" range, got %q", name, v)
-		}
+	if problems := p.Validate(mtu); len(problems) > 0 {
+		return fmt.Errorf("%s", strings.Join(problems, "; "))
 	}
 	return nil
 }
 
-// isValidUintRange reports whether s is a plain non-negative integer or an
-// "a-b" range of them, the format amneziawg-tools expects for its AWG 3.0
-// range-typed config keys.
-func isValidUintRange(s string) bool {
-	return uintRangeRe.MatchString(s)
+// validateISettings checks a whole I1-I5 set against the grammar
+// amneziawg-go parses in newObfChain. Without it a typo travels all the way
+// into a client .conf and surfaces as a tunnel that will not start, on the
+// user's machine rather than here. The grammar itself lives in the shared api
+// package, so the client dialog rejects exactly the same values.
+func validateISettings(settings ISettings) error {
+	if problems := api.ValidateISettings(settings); len(problems) > 0 {
+		return fmt.Errorf("%s", strings.Join(problems, "; "))
+	}
+	return nil
 }
-
-var uintRangeRe = regexp.MustCompile(`^\d+(-\d+)?$`)
 
 // writeIfSet writes "key = value\n" to sb only if value is non-empty.
 func writeIfSet(sb *strings.Builder, key, value string) {
@@ -543,7 +497,7 @@ func (m *Manager) CreateServer(req CreateServerRequest) (*Server, error) {
 		if obfParams.HeaderProtectionKey == "" {
 			obfParams.HeaderProtectionKey = randomBase64Key()
 		}
-		if err := validateObfuscationParams(obfParams); err != nil {
+		if err := validateObfuscationParams(obfParams, mtu); err != nil {
 			return nil, fmt.Errorf("%w: %w", ErrInvalid, err)
 		}
 	}
@@ -1014,6 +968,15 @@ func (m *Manager) AddClient(serverID, clientName string, applyI bool, iSettings 
 	// Content-Disposition filename, so it is cleaned before anything stores
 	// it - not at each of those points.
 	clientName = sanitizeName(clientName, "client")
+
+	// Checked before any key is generated: a malformed signature packet would
+	// otherwise reach the client's .conf and only surface there, as a tunnel
+	// that will not start.
+	if applyI {
+		if err := validateISettings(iSettings); err != nil {
+			return nil, "", fmt.Errorf("%w: %w", ErrInvalid, err)
+		}
+	}
 
 	// Key generation shells out to awg three times. Doing that under the
 	// write lock would stall every other request, including plain reads, for
@@ -1524,6 +1487,10 @@ func (m *Manager) updateClientAllowedIPsLocked(serverID, clientID, allowedIPs st
 
 // UpdateClientISettings updates the I1-I5 settings for a client.
 func (m *Manager) UpdateClientISettings(serverID, clientID string, applyI *bool, iSettings map[string]string) (*Client, string, error) {
+	if err := validateISettings(iSettings); err != nil {
+		return nil, "", fmt.Errorf("%w: %w", ErrInvalid, err)
+	}
+
 	clientCopy, err := m.updateClientISettingsLocked(serverID, clientID, applyI, iSettings)
 	if err != nil {
 		return nil, "", err

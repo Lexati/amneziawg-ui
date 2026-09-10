@@ -3,6 +3,8 @@ package ui
 import (
 	"fmt"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -19,6 +21,96 @@ import (
 // that the symbol gets too dense for a phone camera, so the UI points at the
 // download instead. It matches the limit the previous web UI used.
 const qrCapacity = 2000
+
+// ── Dialog shells ────────────────────────────────────────────────────────────
+//
+// fyne builds the dismiss/confirm row out of plain widget.Buttons, which report
+// the default arrow cursor: right for a desktop window, wrong for a page where
+// everything clickable shows a hand. dialog.CustomDialog.SetButtons is the
+// supported way to replace that row, so every dialog in this UI is opened
+// through one of the four helpers below and none of them calls dialog.Show*
+// directly.
+//
+// A dialog built this way carries no callback of its own, so dismissing it with
+// Escape reports nothing rather than a "cancelled" - which is what every caller
+// here does with a cancel anyway.
+
+// showDialog presents content with a single dismiss button.
+func (u *UI) showDialog(title, dismiss string, content fyne.CanvasObject, size fyne.Size) {
+	view := dialog.NewCustomWithoutButtons(title, content, u.win)
+	view.SetButtons([]fyne.CanvasObject{button(dismiss, nil, view.Hide)})
+	view.Resize(size)
+	view.Show()
+}
+
+// showFormDialog presents content with the cancel/confirm pair a form needs.
+//
+// onConfirm reports whether the dialog is finished: returning false leaves it
+// open, which is what a form does when what the user typed does not validate -
+// closing it first would throw the input away along with the mistake.
+func (u *UI) showFormDialog(title, confirm, dismiss string, content fyne.CanvasObject, size fyne.Size, onConfirm func() bool) {
+	view := dialog.NewCustomWithoutButtons(title, content, u.win)
+
+	cancel := button(dismiss, theme.CancelIcon(), view.Hide)
+	ok := button(confirm, theme.ConfirmIcon(), func() {
+		if !onConfirm() {
+			return
+		}
+		view.Hide()
+	})
+	ok.Importance = widget.HighImportance
+
+	view.SetButtons([]fyne.CanvasObject{cancel, ok})
+	view.Resize(size)
+	view.Show()
+}
+
+// showConfirm asks a yes/no question, the way dialog.ShowConfirm would.
+func (u *UI) showConfirm(title, message string, onConfirm func()) {
+	view := dialog.NewCustomWithoutButtons(title, wrappedMessage(message), u.win)
+	view.SetIcon(theme.QuestionIcon())
+
+	no := button("No", theme.CancelIcon(), view.Hide)
+	yes := button("Yes", theme.ConfirmIcon(), func() {
+		view.Hide()
+		onConfirm()
+	})
+	yes.Importance = widget.HighImportance
+
+	view.SetButtons([]fyne.CanvasObject{no, yes})
+	view.Resize(u.messageSize(message, view))
+	view.Show()
+}
+
+// showError reports a failed call. Only UI.fail calls it, from the Fyne thread.
+func (u *UI) showError(err error) {
+	message := err.Error()
+	if r, size := utf8.DecodeRuneInString(message); r != utf8.RuneError {
+		message = string(unicode.ToUpper(r)) + message[size:]
+	}
+
+	view := dialog.NewCustomWithoutButtons("Error", wrappedMessage(message), u.win)
+	view.SetIcon(theme.ErrorIcon())
+	view.SetButtons([]fyne.CanvasObject{button("OK", nil, view.Hide)})
+	view.Resize(u.messageSize(message, view))
+	view.Show()
+}
+
+func wrappedMessage(message string) fyne.CanvasObject {
+	return &widget.Label{Text: message, Alignment: fyne.TextAlignCenter, Wrapping: fyne.TextWrapWord}
+}
+
+// messageSize is the size fyne would have given a text dialog: wide enough for
+// the message on one line, capped at 600px and at most 90% of the window. A
+// dialog built with NewCustomWithoutButtons does not run fyne's own sizing
+// hook, and a word-wrapped label on its own asks for the width of its longest
+// word - a two-line-per-sentence sliver.
+func (u *UI) messageSize(message string, view *dialog.CustomDialog) fyne.Size {
+	// The 32 is fyne's own dialogLayout padding around the content.
+	unwrapped := widget.NewLabel(message).MinSize().Width + 32 + theme.Padding()*2
+	width := min(unwrapped, 600, u.win.Canvas().Size().Width*0.9)
+	return fyne.NewSize(width, view.MinSize().Height)
+}
 
 // scrolled wraps dialog content so a long form never grows past the viewport.
 func (u *UI) scrolled(content fyne.CanvasObject) fyne.CanvasObject {
@@ -158,9 +250,7 @@ func (u *UI) presentServerConfig(info api.ServerInfo) {
 	// The actions stay outside the scroll area so they are always reachable.
 	content := container.NewBorder(nil, container.NewHBox(full, download), nil, nil, u.scrolled(body))
 
-	view := dialog.NewCustom("Server configuration", "Close", content, u.win)
-	view.Resize(u.dialogSize(880, 720))
-	view.Show()
+	u.showDialog("Server configuration", "Close", content, u.dialogSize(880, 720))
 }
 
 func (u *UI) showRawServerConfig(serverID string) {
@@ -189,9 +279,7 @@ func (u *UI) showRawServerConfig(serverID string) {
 					container.NewHBox(copyButton, download),
 				), nil, nil, nil, view)
 
-			raw := dialog.NewCustom("Raw configuration: "+config.ServerName, "Close", body, u.win)
-			raw.Resize(u.dialogSize(900, 760))
-			raw.Show()
+			u.showDialog("Raw configuration: "+config.ServerName, "Close", body, u.dialogSize(900, 760))
 		})
 	}()
 }
@@ -425,9 +513,7 @@ func (u *UI) presentClientConfig(server api.Server, client api.Client, configs a
 
 	body := container.NewBorder(meta, container.NewHBox(download), left, nil, right)
 
-	view := dialog.NewCustom("Client configuration: "+client.Name, "Close", body, u.win)
-	view.Resize(u.dialogSize(960, 720))
-	view.Show()
+	u.showDialog("Client configuration: "+client.Name, "Close", body, u.dialogSize(960, 720))
 
 	render(current)
 }
