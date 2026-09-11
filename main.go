@@ -15,7 +15,6 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/middleware/adaptor"
 	"github.com/gofiber/fiber/v3/middleware/basicauth"
 	"github.com/gofiber/fiber/v3/middleware/compress"
 	"github.com/gofiber/fiber/v3/middleware/logger"
@@ -27,8 +26,6 @@ import (
 )
 
 const (
-	socketIOPath = "/socket.io"
-
 	// staticDir is where "make web-ui" leaves the packaged frontend, relative
 	// to the working directory the server is started from.
 	staticDir = "./web-ui/wasm"
@@ -39,13 +36,6 @@ func main() {
 
 	// Initialise business logic
 	mgr := internal.NewManager()
-
-	// Initialise Socket.IO hub (registers connection handlers immediately)
-	hub := internal.NewHub(mgr)
-	mgr.SetHub(hub)
-
-	// Start background goroutine for periodic traffic broadcasts
-	go hub.StartTrafficUpdates()
 
 	// Build Fiber app
 	app := fiber.New(internal.FiberConfig())
@@ -64,15 +54,11 @@ func main() {
 	packed := packedAssets(frontend, ".")
 
 	// The wasm bundle is tens of megabytes uncompressed, so compression is
-	// not optional here. Socket.IO is excluded: its long-polling responses
-	// are tiny, and compressing them only gets in the way of the framing. So
-	// are the assets that already sit on disk gzipped - sendPacked hands those
-	// bytes over verbatim, and re-encoding them would be wasted work.
+	// not optional here. The assets that already sit on disk gzipped are
+	// excluded: sendPacked hands those bytes over verbatim, and re-encoding
+	// them would be wasted work.
 	app.Use(compress.New(compress.Config{
 		Next: func(c fiber.Ctx) bool {
-			if strings.HasPrefix(c.Path(), socketIOPath) {
-				return true
-			}
 			_, ok := packed[c.Path()]
 			return ok
 		},
@@ -100,13 +86,8 @@ func main() {
 		fmt.Println("pprof enabled at /debug/pprof/")
 	}
 
-	// Socket.IO — must be registered before other routes.
-	// adaptor.HTTPHandler wraps net/http.Handler; fasthttpadaptor under the hood
-	// supports http.Hijacker so gorilla/websocket upgrades work correctly.
-	app.Use(socketIOPath+"/", adaptor.HTTPHandler(hub.Server().ServeHandler(nil)))
-
 	// REST routes first, so the catch-all below cannot shadow them.
-	h := internal.NewHandlers(mgr, hub)
+	h := internal.NewHandlers(mgr)
 	h.RegisterRoutes(app)
 
 	// Everything not claimed above is a frontend asset.

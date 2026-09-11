@@ -104,14 +104,5 @@ type (
 	IptablesTest = api.IptablesTest
 )
 
-// Socket.IO event payloads.
-type (
-	// StatusEvent is sent to every socket on connect.
-	StatusEvent = api.StatusEvent
-
-	// ServerStatusEvent is broadcast when an interface goes up or down.
-	ServerStatusEvent = api.ServerStatusEvent
-
-	// TrafficEvent carries the periodic traffic snapshot.
-	TrafficEvent = api.TrafficEvent
-)
+// TrafficSnapshot is the /api/traffic response.
+type TrafficSnapshot = api.TrafficSnapshot

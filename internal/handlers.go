@@ -17,12 +17,6 @@ import (
 // Handlers holds dependencies for HTTP request handlers.
 type Handlers struct {
 	mgr *Manager
-	hub Hub
-}
-
-// Hub interface for handler usage (broader than HubBroadcaster).
-type Hub interface {
-	HubBroadcaster
 }
 
 // FiberConfig is the configuration the app is built with. It lives here
@@ -52,8 +46,8 @@ func FiberConfig() fiber.Config {
 }
 
 // NewHandlers creates a Handlers instance.
-func NewHandlers(mgr *Manager, hub Hub) *Handlers {
-	return &Handlers{mgr: mgr, hub: hub}
+func NewHandlers(mgr *Manager) *Handlers {
+	return &Handlers{mgr: mgr}
 }
 
 // fail turns a manager error into a response. The status code comes from the
@@ -97,8 +91,9 @@ func (h *Handlers) RegisterRoutes(app *fiber.App) {
 
 	api := app.Group("/api")
 
-	// Servers – static routes first
-	api.Get("/servers/traffic", h.getAllServersTraffic)
+	api.Get("/traffic", h.getTraffic)
+
+	// Servers
 	api.Get("/servers", h.getServers)
 	api.Post("/servers", h.createServer)
 	api.Delete("/servers/:id", h.deleteServer)
@@ -107,7 +102,6 @@ func (h *Handlers) RegisterRoutes(app *fiber.App) {
 	api.Get("/servers/:id/config", h.getServerConfig)
 	api.Get("/servers/:id/config/download", h.downloadServerConfig)
 	api.Get("/servers/:id/info", h.getServerInfo)
-	api.Get("/servers/:id/traffic", h.getServerTraffic)
 
 	// Clients
 	api.Get("/servers/:id/clients", h.getServerClients)
@@ -264,18 +258,10 @@ func (h *Handlers) getServerInfo(c fiber.Ctx) error {
 	})
 }
 
-func (h *Handlers) getServerTraffic(c fiber.Ctx) error {
-	id := c.Params("id")
-	traffic := h.mgr.GetPeerTrafficForServer(id)
-	if traffic == nil {
-		return respond(c, fiber.StatusNotFound,
-			ErrorResponse{Error: "server not found or no traffic data"})
-	}
-	return c.JSON(traffic)
-}
-
-func (h *Handlers) getAllServersTraffic(c fiber.Ctx) error {
-	return c.JSON(h.mgr.GetAllServersTraffic())
+// getTraffic is what the page polls: every counter it shows in one
+// response, so a refresh costs one request rather than one per server.
+func (h *Handlers) getTraffic(c fiber.Ctx) error {
+	return c.JSON(h.mgr.TrafficSnapshot())
 }
 
 // ── Clients ──────────────────────────────────────────────────────────────────

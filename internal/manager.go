@@ -25,15 +25,12 @@ import (
 // Manager orchestrates all AmneziaWG operations.
 type Manager struct {
 	Config *AppConfig
-	hub    HubBroadcaster
 
 	// publicIP is re-detected on demand from an HTTP handler while other
 	// requests are generating configs from it, so it lives behind mu rather
 	// than as a bare exported field.
 	publicIP string
 
-	// Traffic update interval in seconds
-	TrafficUpdateInterval int
 	SuspendUpdateInterval int
 
 	// Environment-driven defaults
@@ -69,11 +66,6 @@ func (m *Manager) configPath() string {
 	return ConfigFile
 }
 
-// HubBroadcaster is a minimal interface the Manager uses to send events.
-type HubBroadcaster interface {
-	BroadcastServerStatus(serverID, status string)
-}
-
 func getenv(key, defaultVal string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
@@ -92,7 +84,6 @@ func atoiDefault(s string, def int) int {
 // NewManager creates and initialises a Manager from environment variables.
 func NewManager() *Manager {
 	m := &Manager{
-		TrafficUpdateInterval: 5,
 		SuspendUpdateInterval: 60,
 		EnableObfuscation:     true,
 		statuses:              map[string]statusObservation{},
@@ -132,11 +123,6 @@ func NewManager() *Manager {
 	fmt.Printf("Detected public IP: %s\n", m.PublicIP())
 
 	return m
-}
-
-// SetHub injects the WebSocket hub so the manager can broadcast events.
-func (m *Manager) SetHub(h HubBroadcaster) {
-	m.hub = h
 }
 
 func (m *Manager) ensureDirectories() {
@@ -833,12 +819,6 @@ func (m *Manager) StartServer(serverID string) error {
 	m.saveOrLog("server start")
 
 	fmt.Printf("Server %s started\n", srv.Name)
-	if m.hub != nil {
-		go func() {
-			time.Sleep(2 * time.Second)
-			m.hub.BroadcastServerStatus(serverID, "running")
-		}()
-	}
 	return nil
 }
 
@@ -865,12 +845,6 @@ func (m *Manager) StopServer(serverID string) error {
 	m.saveOrLog("server stop")
 
 	fmt.Printf("Server %s stopped\n", srv.Name)
-	if m.hub != nil {
-		go func() {
-			time.Sleep(2 * time.Second)
-			m.hub.BroadcastServerStatus(serverID, "stopped")
-		}()
-	}
 	return nil
 }
 
@@ -1864,6 +1838,26 @@ func (m *Manager) GetAllServersTraffic() map[string]InterfaceTraffic {
 		}
 	}
 	return result
+}
+
+// TrafficSnapshot collects the interface and peer counters of every server
+// into the one response the page polls. Servers that are down contribute
+// nothing; the page keeps their last counters as they were.
+func (m *Manager) TrafficSnapshot() TrafficSnapshot {
+	servers := m.copyServers()
+
+	clientTraffic := map[string]map[string]ClientTraffic{}
+	for _, srv := range servers {
+		if t := m.GetPeerTrafficForServer(srv.ID); len(t) > 0 {
+			clientTraffic[srv.ID] = t
+		}
+	}
+
+	return TrafficSnapshot{
+		Timestamp:     float64(time.Now().Unix()),
+		ClientTraffic: clientTraffic,
+		ServerTraffic: m.GetAllServersTraffic(),
+	}
 }
 
 // PublicIP returns the address every generated config points clients at.

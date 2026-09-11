@@ -17,7 +17,7 @@ func newTestAPI(t *testing.T) (*fiber.App, *Manager) {
 	t.Helper()
 	m := newClientManager(t)
 	app := fiber.New(FiberConfig())
-	NewHandlers(m, nil).RegisterRoutes(app)
+	NewHandlers(m).RegisterRoutes(app)
 	return app, m
 }
 

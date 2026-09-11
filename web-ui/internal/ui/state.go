@@ -6,7 +6,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -17,11 +16,12 @@ import (
 )
 
 const (
-	// The Socket.IO feed drives the counters; these loops only cover the
-	// case where the socket is down, and keep the list honest if an event
-	// is ever missed.
-	trafficInterval = 10 * time.Second
-	serversInterval = 60 * time.Second
+	// The page polls: the counters often, since that is what the operator
+	// watches move, and the server list rarely - every action that changes
+	// it reloads it directly, so the loop only catches changes made from
+	// another tab.
+	trafficInterval = 5 * time.Second
+	serversInterval = 30 * time.Second
 )
 
 // state is what the page has last heard from the backend, behind one lock:
@@ -43,8 +43,6 @@ type state struct {
 	// than from a number of its own, so the operator's setting is what a new
 	// server actually gets.
 	serverDefaultMTU int
-
-	socketLive atomic.Bool
 }
 
 func newState() *state {
@@ -111,16 +109,10 @@ func (u *UI) Start() {
 	go u.loadSystemStatus()
 	go u.loadDefaultISettings()
 	go u.reloadServers()
-	go u.connectSocket()
 
-	// Fallbacks for when the Socket.IO feed is not up: poll the same data
-	// over REST, but stay quiet while events are flowing.
 	go func() {
 		for {
 			time.Sleep(trafficInterval)
-			if u.socketLive.Load() {
-				continue
-			}
 			u.refreshTraffic()
 		}
 	}()
@@ -138,9 +130,7 @@ func (u *UI) loadSystemStatus() {
 		u.unreachable()
 		return
 	}
-	if !u.socketLive.Load() {
-		u.setTransport("polling", style.Warning)
-	}
+	u.setTransport("online", style.Success)
 
 	port, err := strconv.Atoi(strings.TrimSpace(status.Environment.WebUIPort))
 	u.mu.Lock()
@@ -205,36 +195,18 @@ func (u *UI) reloadServers() {
 		u.list.Render(servers)
 		u.clampScroll()
 	})
-
-	if !u.socketLive.Load() {
-		u.refreshTraffic()
-	}
+	u.refreshTraffic()
 }
 
-// refreshTraffic fetches the counters over REST. Only used while the
-// Socket.IO feed is down.
+// refreshTraffic fetches the counters and hands them to the list on the UI
+// goroutine.
 func (u *UI) refreshTraffic() {
-	iface, err := u.env.Backend.InterfaceTraffic()
+	traffic, err := u.env.Backend.Traffic()
 	if err != nil {
 		u.unreachable()
 		return
 	}
-
-	u.mu.Lock()
-	servers := u.servers
-	u.mu.Unlock()
-
-	peers := map[string]map[string]api.ClientTraffic{}
-	for _, srv := range servers {
-		peers[srv.ID] = u.env.Backend.PeerTraffic(srv.ID)
-	}
-
-	u.applyTraffic(iface, peers)
-}
-
-// applyTraffic hands a snapshot to the list on the UI goroutine.
-func (u *UI) applyTraffic(iface map[string]api.InterfaceTraffic, peers map[string]map[string]api.ClientTraffic) {
-	fyne.Do(func() { u.list.ApplyTraffic(iface, peers) })
+	fyne.Do(func() { u.list.ApplyTraffic(traffic.ServerTraffic, traffic.ClientTraffic) })
 }
 
 // fingerprint is a cheap "did anything change" marker for the server list.

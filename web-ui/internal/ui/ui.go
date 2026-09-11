@@ -1,8 +1,8 @@
 // Package ui is the page: a fixed header, a scrolling body holding the
 // create-server form and the server list, and a status footer. It owns the
-// data the body is rendered from and the two feeds that keep it current -
-// the Socket.IO events and the REST fallbacks - and hands everything the
-// components need down to them through env.Env.
+// data the body is rendered from and the REST polling that keeps it
+// current, and hands everything the components need down to them through
+// env.Env.
 //
 // The tree below this package follows the page top to bottom:
 //
@@ -28,8 +28,6 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
-	sio "github.com/zishang520/socket.io/clients/socket/v3"
-
 	"amneziawg-web-ui/web-ui/internal/ui/backend"
 	"amneziawg-web-ui/web-ui/internal/ui/env"
 	"amneziawg-web-ui/web-ui/internal/ui/newserver"
@@ -45,7 +43,7 @@ func NewDarkTheme() fyne.Theme {
 }
 
 // UI is the page. It holds the header widgets it updates itself, the two
-// body components, and the state and feeds behind them.
+// body components, and the state behind them.
 type UI struct {
 	app fyne.App
 	win fyne.Window
@@ -62,8 +60,6 @@ type UI struct {
 	form   *newserver.Form
 	list   *serverlist.List
 	scroll *container.Scroll
-
-	socket *sio.Socket
 }
 
 // New wires the page up; Build lays it out and Start begins loading.
@@ -173,9 +169,8 @@ func (u *UI) footer() fyne.CanvasObject {
 
 // ── Header status ────────────────────────────────────────────────────────────
 
-// setTransport drives the status light: green while the Socket.IO feed is
-// carrying updates, amber while the UI is falling back to REST polling, red
-// when the backend cannot be reached at all.
+// setTransport drives the status light: green while the backend answers,
+// red once a request has failed and until the next one succeeds.
 func (u *UI) setTransport(label string, c color.NRGBA) {
 	fyne.Do(func() {
 		u.statusDot.FillColor = c

@@ -274,27 +274,9 @@ type SystemEnvironment struct {
 	DefaultDNS       string `json:"default_dns"`
 }
 
-// ── Socket.IO events ─────────────────────────────────────────────────────────
-
-// StatusEvent is the "status" event sent to every socket on connect. Port is
-// the WEB_UI_PORT value, which the backend keeps as the raw string it read
-// from the environment.
-type StatusEvent struct {
-	Message  string `json:"message"`
-	PublicIP string `json:"public_ip"`
-	Port     string `json:"port"`
-}
-
-// ServerStatusEvent is the "server_status" event, broadcast whenever an
-// interface goes up or down.
-type ServerStatusEvent struct {
-	ServerID string `json:"server_id"`
-	Status   string `json:"status"`
-}
-
-// TrafficEvent is the "traffic_update" event: interface counters per server,
-// and peer counters per server and client.
-type TrafficEvent struct {
+// TrafficSnapshot is the /api/traffic response the page polls: interface
+// counters per server, and peer counters per server and client.
+type TrafficSnapshot struct {
 	Timestamp     float64                             `json:"timestamp"`
 	ClientTraffic map[string]map[string]ClientTraffic `json:"client_traffic"`
 	ServerTraffic map[string]InterfaceTraffic         `json:"server_traffic"`

@@ -153,19 +153,10 @@ func (b *Client) ServerConfig(id string) (api.ServerConfig, error) {
 	return out, b.get(apiBase+"/servers/"+id+"/config", &out)
 }
 
-func (b *Client) InterfaceTraffic() (map[string]api.InterfaceTraffic, error) {
-	out := map[string]api.InterfaceTraffic{}
-	return out, b.get(apiBase+"/servers/traffic", &out)
-}
-
-// PeerTraffic returns the per-client counters of one server. A stopped
-// interface simply has no counters, which is not an error worth surfacing.
-func (b *Client) PeerTraffic(serverID string) map[string]api.ClientTraffic {
-	out := map[string]api.ClientTraffic{}
-	if err := b.get(apiBase+"/servers/"+serverID+"/traffic", &out); err != nil {
-		return map[string]api.ClientTraffic{}
-	}
-	return out
+// Traffic returns every counter the page shows in one call.
+func (b *Client) Traffic() (api.TrafficSnapshot, error) {
+	var out api.TrafficSnapshot
+	return out, b.get(apiBase+"/traffic", &out)
 }
 
 func (b *Client) Clients(serverID string) ([]api.Client, error) {
