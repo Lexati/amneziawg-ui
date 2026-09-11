@@ -4,7 +4,7 @@
 устойчивым к DPI форком WireGuard.
 
 Один Go-бинарник и три бинарника AmneziaWG в Alpine-образе размером всего
-**~26 МБ** (для сравнения, [amnezia-wg-easy](https://github.com/w0rng/amnezia-wg-easy)
+**~23 МБ** (для сравнения, [amnezia-wg-easy](https://github.com/w0rng/amnezia-wg-easy)
 весит ~80 МБ): ни интерпретаторов, ни nginx, ни supervisor. Создавайте несколько
 серверов, управляйте клиентами и
 следите за трафиком из веб-интерфейса, где **AmneziaWG 3.1 (header protection +
@@ -70,8 +70,7 @@ docker compose up -d
 > ```sh
 > printf 'ваш-пароль' | openssl dgst -binary -sha256 | base64
 > ```
-> HTTPS контейнер не терминирует — поставьте перед ним свой reverse proxy
-> (nginx, Caddy, Traefik), если панель смотрит в интернет.
+> HTTPS контейнер не создает — если нужен HTTPS поставьте перед ним свой reverse proxy (nginx, Caddy, Traefik).
 
 ## Переменные окружения
 
@@ -101,3 +100,6 @@ docker compose up -d
 
 **[DOCS.md](DOCS.md)**
 
+## Список изменений
+
+**[CHANGELOG.md](CHANGELOG.md)**
