@@ -10,6 +10,7 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/lang"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
@@ -31,7 +32,7 @@ func ShowEditor(e *env.Env, server api.Server, client *api.Client) {
 	allowedIPs := widgets.EntryWithText("0.0.0.0/0, ::/0")
 	suspendAt := widgets.EntryWithPlaceholder(SuspendLayout)
 
-	applyI := widget.NewCheck("Apply I-settings (custom signature packets I1-I5)", nil)
+	applyI := widget.NewCheck(lang.L("Apply I-settings (custom signature packets I1-I5)"), nil)
 	iEntries := make([]*widget.Entry, 5)
 	for i := range iEntries {
 		iEntries[i] = widget.NewEntry()
@@ -41,9 +42,9 @@ func ShowEditor(e *env.Env, server api.Server, client *api.Client) {
 	for i, entry := range iEntries {
 		key := fmt.Sprintf("i%d", i+1)
 		if value := defaults[key]; value != "" {
-			entry.SetPlaceHolder("server default: " + widgets.Truncate(value, 40))
+			entry.SetPlaceHolder(lang.L("server default: {{.Value}}", map[string]any{"Value": widgets.Truncate(value, 40)}))
 		} else {
-			entry.SetPlaceHolder("leave empty to skip")
+			entry.SetPlaceHolder(lang.L("leave empty to skip"))
 		}
 	}
 
@@ -61,19 +62,19 @@ func ShowEditor(e *env.Env, server api.Server, client *api.Client) {
 			suspendAt.SetText(time.Unix(int64(*client.SuspendAt), 0).Local().Format(SuspendLayout))
 		}
 	} else {
-		name.SetPlaceHolder("New Client")
+		name.SetPlaceHolder(lang.L("New Client"))
 	}
 
 	iBox := container.NewVBox()
 	for i, entry := range iEntries {
 		iBox.Add(widgets.Labeled(fmt.Sprintf("I%d", i+1), entry))
 	}
-	iNote := widget.NewLabel("Each value describes one packet sent before the handshake, as a sequence of tags: " +
+	iNote := widget.NewLabel(lang.L("Each value describes one packet sent before the handshake, as a sequence of tags: " +
 		"<b 0x...> static bytes, <t> a 4-byte timestamp, <r N> random bytes, <rc N> random letters, <rd N> random digits " +
 		"(N up to 1000). Example: <b 0xd100000001><rc 8><t><r 50>. These are client-only parameters, they are never " +
 		"written into the server config; empty values are skipped, and an empty I1 turns the whole set off. Keep each " +
 		"packet under about 1472 bytes or it is fragmented on the way out, which is the signature this is meant to avoid. " +
-		"A config that grows past the QR code limit can still be downloaded as a file.")
+		"A config that grows past the QR code limit can still be downloaded as a file."))
 	iNote.Wrapping = fyne.TextWrapWord
 	iNote.TextStyle = fyne.TextStyle{Italic: true}
 	iBox.Add(iNote)
@@ -90,32 +91,32 @@ func ShowEditor(e *env.Env, server api.Server, client *api.Client) {
 	}
 
 	items := []*widget.FormItem{
-		{Text: "Client name", Widget: name},
-		{Text: "Allowed IPs", Widget: allowedIPs,
-			HintText: "comma-separated ranges routed through the VPN; default 0.0.0.0/0, ::/0"},
+		{Text: lang.L("Client name"), Widget: name},
+		{Text: lang.L("Allowed IPs"), Widget: allowedIPs,
+			HintText: lang.L("comma-separated ranges routed through the VPN; default 0.0.0.0/0, ::/0")},
 	}
 
 	if editing {
 		clear := widgets.NewButton("", theme.CancelIcon(), func() { suspendAt.SetText("") })
 		items = append(items, &widget.FormItem{
-			Text:     "Auto-suspend at",
+			Text:     lang.L("Auto-suspend at"),
 			Widget:   container.NewBorder(nil, nil, nil, clear, suspendAt),
-			HintText: "local time, format " + SuspendLayout + "; empty disables auto-suspension",
+			HintText: lang.L("local time, format {{.Layout}}; empty disables auto-suspension", map[string]any{"Layout": SuspendLayout}),
 		})
 		created := time.Unix(int64(client.CreatedAt), 0).Local().Format("2006-01-02 15:04:05")
-		items = append(items, &widget.FormItem{Text: "Created", Widget: widget.NewLabel(created)})
+		items = append(items, &widget.FormItem{Text: lang.L("Created"), Widget: widget.NewLabel(created)})
 	}
 
 	content := container.NewVBox(widget.NewForm(items...), widgets.Separator(), applyI, iBox)
 
-	title := "Add client to " + server.Name
-	confirm := "Add client"
+	title := lang.L("Add client to {{.Server}}", map[string]any{"Server": server.Name})
+	confirm := lang.L("Add client")
 	if editing {
-		title = "Edit client " + client.Name
-		confirm = "Save"
+		title = lang.L("Edit client {{.Name}}", map[string]any{"Name": client.Name})
+		confirm = lang.L("Save")
 	}
 
-	dialogs.ShowForm(e.Win, title, confirm, "Cancel", dialogs.Scrolled(content), dialogs.Size(e.Win, 760, 620), func() bool {
+	dialogs.ShowForm(e.Win, title, confirm, lang.L("Cancel"), dialogs.Scrolled(content), dialogs.Size(e.Win, 760, 620), func() bool {
 		settings := api.ISettings{}
 		var problems []string
 		for i, entry := range iEntries {
@@ -153,7 +154,7 @@ func ShowEditor(e *env.Env, server api.Server, client *api.Client) {
 
 func add(e *env.Env, server api.Server, name, allowedIPs string, applyI bool, settings api.ISettings) {
 	if name == "" {
-		name = "New Client"
+		name = lang.L("New Client")
 	}
 
 	go func() {
@@ -167,7 +168,7 @@ func add(e *env.Env, server api.Server, name, allowedIPs string, applyI bool, se
 			e.Notify.Fail(err)
 			return
 		}
-		e.Notify.OK("Client %q added", name)
+		e.Notify.OK(lang.L("Client \"{{.Name}}\" added", map[string]any{"Name": name}))
 		e.Reload()
 	}()
 }
@@ -179,7 +180,7 @@ func save(e *env.Env, serverID string, client api.Client, allowedIPs string, app
 	if suspendAt != "" {
 		parsed, err := time.ParseInLocation(SuspendLayout, suspendAt, time.Local)
 		if err != nil {
-			e.Notify.Fail(fmt.Errorf("auto-suspend time must look like %s", SuspendLayout))
+			e.Notify.Fail(errors.New(lang.L("auto-suspend time must look like {{.Layout}}", map[string]any{"Layout": SuspendLayout})))
 			return
 		}
 		when = &parsed
@@ -198,7 +199,7 @@ func save(e *env.Env, serverID string, client api.Client, allowedIPs string, app
 			e.Notify.Fail(err)
 			return
 		}
-		e.Notify.OK("Client %q updated", client.Name)
+		e.Notify.OK(lang.L("Client \"{{.Name}}\" updated", map[string]any{"Name": client.Name}))
 		e.Reload()
 	}()
 }

@@ -10,6 +10,7 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/lang"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
@@ -120,21 +121,21 @@ type advancedField struct {
 func New(e *env.Env, state State, reflow func()) *Form {
 	f := &Form{env: e, state: state, reflow: reflow}
 
-	f.name = widgets.EntryWithPlaceholder("My VPN Server")
+	f.name = widgets.EntryWithPlaceholder(lang.L("My VPN Server"))
 	f.port = widgets.NumberEntry(defaultPort, "1-65535")
 	f.subnet = widgets.EntryWithText(defaultSubnet)
 	f.mtuSeed = strconv.Itoa(state.ServerMTU())
 	f.mtu = widgets.NumberEntry(f.mtuSeed, fmt.Sprintf("%d-%d", api.MinMTU, api.MaxMTU))
 
 	f.dns = widgets.EntryWithText(defaultDNS)
-	f.endpoint = widgets.EntryWithPlaceholder("leave empty to use the auto-detected public IP")
+	f.endpoint = widgets.EntryWithPlaceholder(lang.L("leave empty to use the auto-detected public IP"))
 
-	f.advancedMode = widget.NewCheck("Advanced settings", f.setAdvanced)
+	f.advancedMode = widget.NewCheck(lang.L("Advanced settings"), f.setAdvanced)
 
-	f.autoStart = widget.NewCheck("Auto-start server on creation", nil)
+	f.autoStart = widget.NewCheck(lang.L("Auto-start server on creation"), nil)
 	f.autoStart.SetChecked(true)
 
-	f.obfuscation = widget.NewCheck("Enable traffic obfuscation (AmneziaWG 3.1)", func(bool) {
+	f.obfuscation = widget.NewCheck(lang.L("Enable traffic obfuscation (AmneziaWG 3.1)"), func(bool) {
 		f.showObfuscation()
 	})
 	f.obfuscation.SetChecked(true)
@@ -142,20 +143,20 @@ func New(e *env.Env, state State, reflow func()) *Form {
 	// The two fields the simple mode asks for sit side by side; the rest of
 	// them only exist in the advanced mode and keep the usual form rows.
 	basics := container.NewGridWithColumns(2,
-		widgets.Labeled("Server name", f.name),
-		widgets.Labeled("Port (1-65535)", f.port),
+		widgets.Labeled(lang.L("Server name"), f.name),
+		widgets.Labeled(lang.L("Port (1-65535)"), f.port),
 	)
 	f.extras = widget.NewForm(
-		&widget.FormItem{Text: "Subnet", Widget: f.subnet, HintText: "e.g. 10.0.0.0/24"},
-		&widget.FormItem{Text: "MTU (recommended 1280)", Widget: f.mtu,
-			HintText: "1280-1440. AmneziaWG 3.x pads every packet, so above about 1425 a full-size one no longer " +
-				"fits a standard 1500-byte path and gets fragmented"},
-		&widget.FormItem{Text: "DNS servers", Widget: f.dns, HintText: "comma-separated IPs, e.g. 8.8.8.8,1.1.1.1"},
-		&widget.FormItem{Text: "Endpoint", Widget: f.endpoint, HintText: "custom IP or hostname clients connect to"},
+		&widget.FormItem{Text: lang.L("Subnet"), Widget: f.subnet, HintText: lang.L("e.g. 10.0.0.0/24")},
+		&widget.FormItem{Text: lang.L("MTU (recommended 1280)"), Widget: f.mtu,
+			HintText: lang.L("1280-1440. AmneziaWG 3.x pads every packet, so above about 1425 a full-size one no longer " +
+				"fits a standard 1500-byte path and gets fragmented")},
+		&widget.FormItem{Text: lang.L("DNS servers"), Widget: f.dns, HintText: lang.L("comma-separated IPs, e.g. 8.8.8.8,1.1.1.1")},
+		&widget.FormItem{Text: lang.L("Endpoint"), Widget: f.endpoint, HintText: lang.L("custom IP or hostname clients connect to")},
 	)
 
-	f.simpleNote = widget.NewLabel("Subnet, MTU, DNS, endpoint and the AmneziaWG 3.1 obfuscation parameters are " +
-		"generated automatically. Tick \"Advanced settings\" to fill them in yourself.")
+	f.simpleNote = widget.NewLabel(lang.L("Subnet, MTU, DNS, endpoint and the AmneziaWG 3.1 obfuscation parameters are " +
+		"generated automatically. Tick \"Advanced settings\" to fill them in yourself."))
 	f.simpleNote.Wrapping = fyne.TextWrapWord
 	f.simpleNote.TextStyle = fyne.TextStyle{Italic: true}
 
@@ -164,7 +165,7 @@ func New(e *env.Env, state State, reflow func()) *Form {
 	f.errors.Importance = widget.DangerImportance
 	f.errors.Hide()
 
-	f.create = widgets.NewButton("Create server", theme.ConfirmIcon(), f.submit)
+	f.create = widgets.NewButton(lang.L("Create server"), theme.ConfirmIcon(), f.submit)
 	f.create.Importance = widget.HighImportance
 
 	f.obfCard = f.buildObfuscation()
@@ -191,7 +192,7 @@ func New(e *env.Env, state State, reflow func()) *Form {
 	f.body = container.NewPadded(content)
 	f.body.Hide()
 
-	f.toggle = widgets.NewButton("Create New VPN Server", theme.MenuDropDownIcon(), f.toggleOpen)
+	f.toggle = widgets.NewButton(lang.L("Create New VPN Server"), theme.MenuDropDownIcon(), f.toggleOpen)
 	f.toggle.Alignment = widget.ButtonAlignLeading
 	f.toggle.Importance = widget.LowImportance
 
@@ -310,67 +311,61 @@ func (f *Form) buildObfuscation() fyne.CanvasObject {
 	// the range only matters once you are deliberately leaving the
 	// recommendation, and the field shows it as soon as it is cleared.
 	junk := container.NewGridWithColumns(3,
-		widgets.Labeled("Jc (recommended 4-12)", f.jc),
-		widgets.Labeled("Jmin (recommended 8)", f.jmin),
-		widgets.Labeled("Jmax (recommended 80)", f.jmax),
+		widgets.Labeled(lang.L("Jc (recommended 4-12)"), f.jc),
+		widgets.Labeled(lang.L("Jmin (recommended 8)"), f.jmin),
+		widgets.Labeled(lang.L("Jmax (recommended 80)"), f.jmax),
 	)
 	sizes := container.NewGridWithColumns(4,
-		widgets.Labeled("S1 (recommended 15-150)", f.s1),
-		widgets.Labeled("S2 (same as S1)", f.s2),
-		widgets.Labeled("S3 (same as S1)", f.s3),
-		widgets.Labeled("S4 (same as S1)", f.s4),
+		widgets.Labeled(lang.L("S1 (recommended 15-150)"), f.s1),
+		widgets.Labeled(lang.L("S2 (same as S1)"), f.s2),
+		widgets.Labeled(lang.L("S3 (same as S1)"), f.s3),
+		widgets.Labeled(lang.L("S4 (same as S1)"), f.s4),
 	)
 	headers := container.NewGridWithColumns(4,
-		widgets.Labeled("H1 (recommended 1)", f.h1),
-		widgets.Labeled("H2 (recommended 2)", f.h2),
-		widgets.Labeled("H3 (recommended 3)", f.h3),
-		widgets.Labeled("H4 (recommended 4)", f.h4),
+		widgets.Labeled(lang.L("H1 (recommended 1)"), f.h1),
+		widgets.Labeled(lang.L("H2 (recommended 2)"), f.h2),
+		widgets.Labeled(lang.L("H3 (recommended 3)"), f.h3),
+		widgets.Labeled(lang.L("H4 (recommended 4)"), f.h4),
 	)
-	f.distinctPaddings = widget.NewCheck("Roll S1-S4 separately instead of one value for all four", nil)
+	f.distinctPaddings = widget.NewCheck(lang.L("Roll S1-S4 separately instead of one value for all four"), nil)
 
-	sizesNote := widget.NewLabel("At least 12 for each padding is the one hard rule here - header protection is always " +
+	sizesNote := widgets.MutedNote(lang.L("At least 12 for each padding is the one hard rule here - header protection is always " +
 		"on in this app and takes its 12-byte nonce from the start of that padding. H1-H4 at 1/2/3/4 follows from the " +
 		"same thing: header protection encrypts the message type itself, so custom headers change nothing an observer " +
 		"can see (without header protection the advice is the opposite - four distinct values in 5-2147483647).\n\n" +
 		"One value for all four paddings is what the docs recommend while RandomTrailers is on, because it is what keeps " +
 		"the receiver from reading one message type as another. It does leave the gaps between the types at WireGuard's " +
 		"own 148/92/64/32, which an observer can recover from the smallest packet of each type; rolling them separately " +
-		"hides that, and gives up the receiver's margin in exchange.")
-	sizesNote.Wrapping = fyne.TextWrapWord
-	sizesNote.TextStyle = fyne.TextStyle{Italic: true}
+		"hides that, and gives up the receiver's margin in exchange."))
 
-	limitsNote := widget.NewLabel("The placeholders are what the engine accepts, not what is wise. On top of them S1 must " +
-		"fit MTU-148, S2 must fit MTU-92, S1+56 must not equal S2, and H1-H4 must all differ.")
-	limitsNote.Wrapping = fyne.TextWrapWord
-	limitsNote.TextStyle = fyne.TextStyle{Italic: true}
+	limitsNote := widgets.MutedNote(lang.L("The placeholders are what the engine accepts, not what is wise. On top of them S1 must " +
+		"fit MTU-148, S2 must fit MTU-92, S1+56 must not equal S2, and H1-H4 must all differ."))
 
-	random := widgets.NewButton("Generate random parameters", theme.ViewRefreshIcon(), f.randomise)
+	random := widgets.NewButton(lang.L("Generate random parameters"), theme.ViewRefreshIcon(), f.randomise)
 
-	f.randomTrailers = widget.NewCheck("RandomTrailers - append a random number of bytes to every packet", nil)
+	f.randomTrailers = widget.NewCheck(lang.L("RandomTrailers - append a random number of bytes to every packet"), nil)
 	f.randomTrailers.SetChecked(true)
-	f.disableCookies = widget.NewCheck("DisableCookies - never answer with cookie replies, skip under-load MAC2 checks", nil)
+	f.disableCookies = widget.NewCheck(lang.L("DisableCookies - never answer with cookie replies, skip under-load MAC2 checks"), nil)
 	f.disableCookies.SetChecked(true)
 
-	togglesNote := widget.NewLabel("AmneziaWG 3.1 packet shaping. Unlike the timing knobs below, both switches are written " +
+	togglesNote := widgets.MutedNote(lang.L("AmneziaWG 3.1 packet shaping. Unlike the timing knobs below, both switches are written " +
 		"identically into the server config and every client config - the two sides must agree, so turn them off if any of " +
-		"your clients is older than AmneziaWG 3.1 (AmneziaVPN < 5.0.1.5).")
-	togglesNote.Wrapping = fyne.TextWrapWord
-	togglesNote.TextStyle = fyne.TextStyle{Italic: true}
+		"your clients is older than AmneziaWG 3.1 (AmneziaVPN < 5.0.1.5)."))
 
-	f.headerKey = widgets.EntryWithPlaceholder("auto-generated if left empty")
-	keyNote := widget.NewLabel("AmneziaWG 3.x requires S1-S4 >= 12 and this key to match byte-for-byte between the server " +
-		"and every client config.")
-	keyNote.Wrapping = fyne.TextWrapWord
-	keyNote.TextStyle = fyne.TextStyle{Italic: true}
+	f.headerKey = widgets.EntryWithPlaceholder(lang.L("auto-generated if left empty"))
+	keyNote := widgets.MutedNote(lang.L("AmneziaWG 3.x requires S1-S4 >= 12 and this key to match byte-for-byte between the server " +
+		"and every client config."))
 
+	// The units in the limits and the wording of the hints are what changes
+	// between languages; the keys are the config file's own and stay.
 	f.advanced = []*advancedField{
-		{key: "ContentPaddingAddition", limits: "0-65535", hint: "off by default, e.g. 0-64"},
-		{key: "RekeyAfterTime", limits: "0-65535 s", hint: "default 120, e.g. 100-140"},
-		{key: "RekeyTimeout", limits: "0-65535 s", hint: "default 5, e.g. 4-7"},
-		{key: "RejectAfterTime", limits: "0-65535 s", hint: "default 180, e.g. 160-200"},
-		{key: "KeepaliveTimeout", limits: "0-65535 s", hint: "default 10, e.g. 8-12"},
-		{key: "MaxHandshakeAttempts", limits: "0-65535", hint: "default 18, e.g. 14-20"},
-		{key: "PersistentKeepalive", limits: "0-65535 s", hint: "default 25, e.g. 22-30"},
+		{key: "ContentPaddingAddition", limits: "0-65535", hint: lang.L("off by default, e.g. 0-64")},
+		{key: "RekeyAfterTime", limits: lang.L("0-65535 s"), hint: lang.L("default 120, e.g. 100-140")},
+		{key: "RekeyTimeout", limits: lang.L("0-65535 s"), hint: lang.L("default 5, e.g. 4-7")},
+		{key: "RejectAfterTime", limits: lang.L("0-65535 s"), hint: lang.L("default 180, e.g. 160-200")},
+		{key: "KeepaliveTimeout", limits: lang.L("0-65535 s"), hint: lang.L("default 10, e.g. 8-12")},
+		{key: "MaxHandshakeAttempts", limits: "0-65535", hint: lang.L("default 18, e.g. 14-20")},
+		{key: "PersistentKeepalive", limits: lang.L("0-65535 s"), hint: lang.L("default 25, e.g. 22-30")},
 	}
 	advancedGrid := container.NewGridWithColumns(2)
 	for _, field := range f.advanced {
@@ -378,19 +373,17 @@ func (f *Form) buildObfuscation() fyne.CanvasObject {
 		advancedGrid.Add(widgets.Labeled(fmt.Sprintf("%s (%s)", field.key, field.limits), field.entry))
 	}
 
-	advancedNote := widget.NewLabel("Optional AWG 3.x timing knobs (an integer or an \"a-b\" range). They are applied " +
-		"per side and do not need to match between server and client; leave empty to use the engine defaults.")
-	advancedNote.Wrapping = fyne.TextWrapWord
-	advancedNote.TextStyle = fyne.TextStyle{Italic: true}
+	advancedNote := widgets.MutedNote(lang.L("Optional AWG 3.x timing knobs (an integer or an \"a-b\" range). They are applied " +
+		"per side and do not need to match between server and client; leave empty to use the engine defaults."))
 
 	box := container.NewVBox(
-		widgets.SectionTitle("Obfuscation parameters"),
+		widgets.SectionTitle(lang.L("Obfuscation parameters")),
 		junk, sizes, f.distinctPaddings, headers, sizesNote, limitsNote,
 		container.NewHBox(random),
 		widgets.Separator(),
 		togglesNote, f.randomTrailers, f.disableCookies,
 		widgets.Separator(),
-		widgets.Labeled("HeaderProtectionKey (base64)", f.headerKey), keyNote,
+		widgets.Labeled(lang.L("HeaderProtectionKey (base64)"), f.headerKey), keyNote,
 		widgets.Separator(),
 		advancedNote, advancedGrid,
 	)
@@ -472,15 +465,15 @@ func (f *Form) build() (api.CreateServerRequest, []string) {
 
 	name := strings.TrimSpace(f.name.Text)
 	if name == "" {
-		problems = append(problems, "Server name is required")
+		problems = append(problems, lang.L("Server name is required"))
 	}
 
 	port, err := strconv.Atoi(strings.TrimSpace(f.port.Text))
 	switch taken, used := f.state.TakenPorts()[port]; {
 	case err != nil, port < 1, port > 65535:
-		problems = append(problems, "Port must be between 1 and 65535")
+		problems = append(problems, lang.L("Port must be between 1 and 65535"))
 	case used:
-		problems = append(problems, fmt.Sprintf("Port %d is already used by %s", port, taken))
+		problems = append(problems, lang.L("Port {{.Port}} is already used by {{.Holder}}", map[string]any{"Port": port, "Holder": taken}))
 	}
 
 	if !f.advancedMode.Checked {
@@ -500,22 +493,22 @@ func (f *Form) build() (api.CreateServerRequest, []string) {
 	}
 
 	if !subnetPattern.MatchString(req.Subnet) {
-		problems = append(problems, "Valid subnet is required (e.g. 10.0.0.0/24)")
+		problems = append(problems, lang.L("Valid subnet is required (e.g. 10.0.0.0/24)"))
 	}
 
 	mtu, err := strconv.Atoi(strings.TrimSpace(f.mtu.Text))
 	if err != nil || mtu < api.MinMTU || mtu > api.MaxMTU {
-		problems = append(problems, fmt.Sprintf("MTU must be between %d and %d", api.MinMTU, api.MaxMTU))
+		problems = append(problems, lang.L("MTU must be between {{.Min}} and {{.Max}}", map[string]any{"Min": api.MinMTU, "Max": api.MaxMTU}))
 	}
 	req.MTU = mtu
 
 	servers := splitList(strings.TrimSpace(f.dns.Text))
 	if len(servers) == 0 {
-		problems = append(problems, "At least one DNS server is required")
+		problems = append(problems, lang.L("At least one DNS server is required"))
 	}
 	for _, dns := range servers {
 		if !ipPattern.MatchString(dns) {
-			problems = append(problems, "Invalid DNS server IP: "+dns)
+			problems = append(problems, lang.L("Invalid DNS server IP: {{.IP}}", map[string]any{"IP": dns}))
 			break
 		}
 	}
@@ -557,7 +550,7 @@ func (f *Form) obfuscationParams(mtu int) (*api.ObfuscationParams, []string) {
 	number := func(entry *widget.Entry, label string) int {
 		value, err := strconv.Atoi(strings.TrimSpace(entry.Text))
 		if err != nil {
-			problems = append(problems, label+" must be a number")
+			problems = append(problems, lang.L("{{.Field}} must be a number", map[string]any{"Field": label}))
 			return 0
 		}
 		return value
@@ -619,14 +612,14 @@ func (f *Form) submit() {
 	f.showErrors(nil)
 
 	f.create.Disable()
-	f.create.SetText("Creating…")
+	f.create.SetText(lang.L("Creating…"))
 
 	go func() {
 		server, err := f.env.Backend.CreateServer(req)
 
 		fyne.Do(func() {
 			f.create.Enable()
-			f.create.SetText("Create server")
+			f.create.SetText(lang.L("Create server"))
 		})
 
 		if err != nil {
@@ -635,7 +628,7 @@ func (f *Form) submit() {
 			return
 		}
 
-		f.env.Notify.OK("Server %q created", server.Name)
+		f.env.Notify.OK(lang.L("Server \"{{.Name}}\" created", map[string]any{"Name": server.Name}))
 		fyne.Do(func() {
 			f.name.SetText("")
 			f.endpoint.SetText("")

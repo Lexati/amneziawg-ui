@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"fmt"
 	"image/color"
 	"time"
 
@@ -43,12 +42,12 @@ func (f *feedback) notify(message string, c color.Color) {
 	})
 }
 
-func (f *feedback) OK(format string, args ...any) {
-	f.notify(fmt.Sprintf(format, args...), style.Success)
+func (f *feedback) OK(message string) {
+	f.notify(message, style.Success)
 }
 
-func (f *feedback) Warn(format string, args ...any) {
-	f.notify(fmt.Sprintf(format, args...), style.Warning)
+func (f *feedback) Warn(message string) {
+	f.notify(message, style.Warning)
 }
 
 func (f *feedback) Fail(err error) {

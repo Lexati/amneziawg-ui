@@ -1,12 +1,14 @@
 package clientdialogs
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/lang"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	qrcode "github.com/skip2/go-qrcode"
@@ -58,15 +60,15 @@ func presentConfig(e *env.Env, server api.Server, client api.Client, configs api
 		// protocol_version fields that make it recognise AWG 3.x, so it is
 		// the recommended - and default - view.
 		views = append(views, configView{
-			label: "AmneziaVPN link",
+			label: lang.L("AmneziaVPN link"),
 			text:  link,
-			note:  "Copy this link into the AmneziaVPN app - it is recognised as AmneziaWG 3.x",
+			note:  lang.L("Copy this link into the AmneziaVPN app - it is recognised as AmneziaWG 3.x"),
 		})
 	}
 	views = append(views, configView{
 		label: ".conf",
 		text:  configs.CleanConfig,
-		note:  "Scan with the AmneziaWG / AmneziaVPN app",
+		note:  lang.L("Scan with the AmneziaWG / AmneziaVPN app"),
 		qr:    true,
 	})
 
@@ -87,10 +89,10 @@ func presentConfig(e *env.Env, server api.Server, client api.Client, configs api
 	current := views[0]
 	var qrPNG []byte
 
-	copyButton := widgets.NewButton("Copy", theme.ContentCopyIcon(), func() {
+	copyButton := widgets.NewButton(lang.L("Copy"), theme.ContentCopyIcon(), func() {
 		dialogs.Copy(e.Notify, current.text)
 	})
-	saveQR := widgets.NewButton("Save QR image", theme.DownloadIcon(), func() {
+	saveQR := widgets.NewButton(lang.L("Save QR image"), theme.DownloadIcon(), func() {
 		if qrPNG == nil {
 			return
 		}
@@ -108,7 +110,7 @@ func presentConfig(e *env.Env, server api.Server, client api.Client, configs api
 	render := func(view configView) {
 		current = view
 		setText(view.text)
-		length.Text = fmt.Sprintf("%d characters", len(view.text))
+		length.Text = lang.N("{{.Count}} characters", len(view.text), map[string]any{"Count": len(view.text)})
 		length.Refresh()
 
 		qrPNG = nil
@@ -157,16 +159,16 @@ func presentConfig(e *env.Env, server api.Server, client api.Client, configs api
 	tabs.Horizontal = true
 	tabs.SetSelected(views[0].label)
 
-	download := widgets.NewButton("Download .conf", theme.DownloadIcon(), func() {
+	download := widgets.NewButton(lang.L("Download .conf"), theme.DownloadIcon(), func() {
 		browser.OpenURL(e.Backend.ClientConfigURL(server.ID, client.ID))
 	})
 	download.Importance = widget.HighImportance
 
-	created := "unknown"
+	created := lang.L("unknown")
 	if configs.CreatedAt > 0 {
 		created = configs.CreatedAtReadable
 	}
-	suspend := "not set"
+	suspend := lang.L("not set")
 	if configs.SuspendAt != nil {
 		suspend = configs.SuspendAtReadable
 	}
@@ -178,14 +180,15 @@ func presentConfig(e *env.Env, server api.Server, client api.Client, configs api
 		), nil, nil, text)
 
 	meta := container.NewHBox(
-		widgets.SmallText("Created: "+created, style.Muted),
+		widgets.SmallText(lang.L("Created: {{.When}}", map[string]any{"When": created}), style.Muted),
 		widgets.SmallText("·", style.Border),
-		widgets.SmallText("Auto-suspend: "+suspend, style.Muted),
+		widgets.SmallText(lang.L("Auto-suspend: {{.When}}", map[string]any{"When": suspend}), style.Muted),
 	)
 
 	body := container.NewBorder(meta, container.NewHBox(download), left, nil, right)
 
-	dialogs.Show(e.Win, "Client configuration: "+client.Name, "Close", body, dialogs.Size(e.Win, 960, 720))
+	dialogs.Show(e.Win, lang.L("Client configuration: {{.Name}}", map[string]any{"Name": client.Name}),
+		lang.L("Close"), body, dialogs.Size(e.Win, 960, 720))
 
 	render(current)
 }
@@ -193,16 +196,16 @@ func presentConfig(e *env.Env, server api.Server, client api.Client, configs api
 // encodeQR renders the payload as a PNG, refusing anything too dense to scan.
 func encodeQR(text string) ([]byte, error) {
 	if text == "" {
-		return nil, fmt.Errorf("this view is unavailable")
+		return nil, errors.New(lang.L("this view is unavailable"))
 	}
 	if len(text) > qrCapacity {
-		return nil, fmt.Errorf("config is too large for a QR code: %d characters (max %d). "+
-			"Use \"Download .conf\" instead", len(text), qrCapacity)
+		return nil, errors.New(lang.L("config is too large for a QR code: {{.Length}} characters (max {{.Max}}). "+
+			"Use \"Download .conf\" instead", map[string]any{"Length": len(text), "Max": qrCapacity}))
 	}
 
 	png, err := qrcode.Encode(text, qrcode.Medium, 640)
 	if err != nil {
-		return nil, fmt.Errorf("could not generate QR code: %w", err)
+		return nil, fmt.Errorf("%s: %w", lang.L("could not generate QR code"), err)
 	}
 	return png, nil
 }

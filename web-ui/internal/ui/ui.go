@@ -25,6 +25,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/lang"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
@@ -104,17 +105,17 @@ func (u *UI) header() fyne.CanvasObject {
 	version := widgets.SmallText(u.version(), style.Muted)
 	version.TextStyle = fyne.TextStyle{Monospace: true}
 
-	ipCaption := widgets.SmallText("Public IP", style.Muted)
-	u.publicIP = widgets.SmallText("detecting…", style.Primary)
+	ipCaption := widgets.SmallText(lang.L("Public IP"), style.Muted)
+	u.publicIP = widgets.SmallText(lang.L("detecting…"), style.Primary)
 	u.publicIP.TextStyle = fyne.TextStyle{Monospace: true}
 
 	u.statusDot = canvas.NewCircle(style.Muted)
 	u.statusDot.Resize(fyne.NewSize(10, 10))
 	dot := container.NewGridWrap(fyne.NewSize(10, 10), u.statusDot)
-	u.transport = widgets.SmallText("connecting…", style.Muted)
+	u.transport = widgets.SmallText(lang.L("connecting…"), style.Muted)
 	u.statusText = widgets.SmallText("", style.Muted)
 
-	refresh := widgets.NewButton("Refresh IP", theme.ViewRefreshIcon(), u.refreshPublicIP)
+	refresh := widgets.NewButton(lang.L("Refresh IP"), theme.ViewRefreshIcon(), u.refreshPublicIP)
 	refresh.Importance = widget.LowImportance
 
 	// canvas.Text draws at the top of whatever box it gets, so every item in
@@ -191,13 +192,13 @@ func (u *UI) setSummary(text string) {
 
 // unreachable is the shared reaction to a failed REST call.
 func (u *UI) unreachable() {
-	u.setTransport("offline", style.Error)
-	u.setSummary("backend unreachable")
+	u.setTransport(lang.L("offline"), style.Error)
+	u.setSummary(lang.L("backend unreachable"))
 }
 
 func (u *UI) setPublicIP(ip string) {
 	if ip == "" {
-		ip = "unknown"
+		ip = lang.L("unknown")
 	}
 	fyne.Do(func() {
 		u.publicIP.Text = ip

@@ -19,6 +19,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/lang"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
@@ -62,8 +63,8 @@ func Confirm(win fyne.Window, title, message string, onConfirm func()) {
 	view := dialog.NewCustomWithoutButtons(title, wrappedMessage(message), win)
 	view.SetIcon(theme.QuestionIcon())
 
-	no := widgets.NewButton("No", theme.CancelIcon(), view.Hide)
-	yes := widgets.NewButton("Yes", theme.ConfirmIcon(), func() {
+	no := widgets.NewButton(lang.L("No"), theme.CancelIcon(), view.Hide)
+	yes := widgets.NewButton(lang.L("Yes"), theme.ConfirmIcon(), func() {
 		view.Hide()
 		onConfirm()
 	})
@@ -82,9 +83,9 @@ func ShowError(win fyne.Window, err error) {
 		message = string(unicode.ToUpper(r)) + message[size:]
 	}
 
-	view := dialog.NewCustomWithoutButtons("Error", wrappedMessage(message), win)
+	view := dialog.NewCustomWithoutButtons(lang.L("Error"), wrappedMessage(message), win)
 	view.SetIcon(theme.ErrorIcon())
-	view.SetButtons([]fyne.CanvasObject{widgets.NewButton("OK", nil, view.Hide)})
+	view.SetButtons([]fyne.CanvasObject{widgets.NewButton(lang.L("OK"), nil, view.Hide)})
 	view.Resize(messageSize(win, message, view))
 	view.Show()
 }
@@ -130,9 +131,9 @@ func Size(win fyne.Window, width, height float32) fyne.Size {
 func Copy(notify env.Notifier, text string) {
 	browser.CopyText(text, func(ok bool) {
 		if ok {
-			notify.OK("Copied to clipboard")
+			notify.OK(lang.L("Copied to clipboard"))
 			return
 		}
-		notify.Warn("Could not copy - select the text and press Ctrl+C")
+		notify.Warn(lang.L("Could not copy - select the text and press Ctrl+C"))
 	})
 }

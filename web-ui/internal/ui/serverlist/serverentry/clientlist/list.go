@@ -3,11 +3,10 @@
 package clientlist
 
 import (
-	"fmt"
-
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/lang"
 
 	"amneziawg-web-ui/web-ui/api"
 	"amneziawg-web-ui/web-ui/internal/ui/env"
@@ -29,11 +28,11 @@ func New(e *env.Env, server api.Server) *List {
 
 	clients := server.Clients
 	if len(clients) == 0 {
-		l.object = widgets.SmallText("No clients yet.", style.Muted)
+		l.object = widgets.SmallText(lang.L("No clients yet."), style.Muted)
 		return l
 	}
 
-	heading := canvas.NewText(fmt.Sprintf("Clients (%d)", len(clients)), style.Text)
+	heading := canvas.NewText(lang.L("Clients ({{.Count}})", map[string]any{"Count": len(clients)}), style.Text)
 	heading.TextSize = 13
 	heading.TextStyle = fyne.TextStyle{Bold: true}
 
@@ -59,7 +58,7 @@ func (l *List) ApplyTraffic(traffic map[string]api.ClientTraffic) {
 	for id, row := range l.rows {
 		data, ok := traffic[id]
 		if !ok {
-			data = api.ClientTraffic{Received: "0 B", Sent: "0 B", LastHandshake: "Never"}
+			data = api.ClientTraffic{Received: "0 B", Sent: "0 B", LastHandshake: lang.L("Never")}
 		}
 		row.Apply(data)
 	}

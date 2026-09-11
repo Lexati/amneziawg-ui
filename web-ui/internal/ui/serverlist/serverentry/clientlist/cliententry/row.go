@@ -3,12 +3,12 @@
 package cliententry
 
 import (
-	"fmt"
 	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/lang"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
@@ -41,9 +41,9 @@ func New(e *env.Env, server api.Server, client api.Client) *Row {
 		env:       e,
 		server:    server,
 		client:    client,
-		traffic:   widgets.SmallText("RX — · TX —", style.Muted),
-		handshake: widgets.SmallText("handshake: —", style.Muted),
-		endpoint:  widgets.SmallText("endpoint: —", style.Muted),
+		traffic:   widgets.SmallText(trafficText("—", "—"), style.Muted),
+		handshake: widgets.SmallText(handshakeText("—"), style.Muted),
+		endpoint:  widgets.SmallText(endpointText("—"), style.Muted),
 	}
 
 	name := canvas.NewText(client.Name, style.Text)
@@ -58,13 +58,13 @@ func New(e *env.Env, server api.Server, client api.Client) *Row {
 		labels.Add(container.NewCenter(widgets.Badge("I1-5", style.Accent)))
 	}
 	if client.Status == "suspended" {
-		labels.Add(container.NewCenter(widgets.Badge("SUSPENDED", style.Warning)))
+		labels.Add(container.NewCenter(widgets.Badge(lang.L("SUSPENDED"), style.Warning)))
 	} else {
-		labels.Add(container.NewCenter(widgets.Badge("ACTIVE", style.Success)))
+		labels.Add(container.NewCenter(widgets.Badge(lang.L("ACTIVE"), style.Success)))
 	}
 	if client.SuspendAt != nil {
 		when := time.Unix(int64(*client.SuspendAt), 0).Local().Format(clientdialogs.SuspendLayout)
-		labels.Add(container.NewCenter(widgets.Badge("auto-suspend "+when, style.Error)))
+		labels.Add(container.NewCenter(widgets.Badge(lang.L("auto-suspend {{.When}}", map[string]any{"When": when}), style.Error)))
 	}
 
 	counters := container.NewHBox(
@@ -73,10 +73,10 @@ func New(e *env.Env, server api.Server, client api.Client) *Row {
 		r.endpoint,
 	)
 
-	edit := widgets.NewButton("Edit", theme.DocumentCreateIcon(), func() {
+	edit := widgets.NewButton(lang.L("Edit"), theme.DocumentCreateIcon(), func() {
 		clientdialogs.ShowEditor(e, server, &client)
 	})
-	qr := widgets.NewButton("QR / config", theme.VisibilityIcon(), func() {
+	qr := widgets.NewButton(lang.L("QR / config"), theme.VisibilityIcon(), func() {
 		clientdialogs.ShowConfig(e, server, client)
 	})
 	download := widgets.NewButton("", theme.DownloadIcon(), func() {
@@ -85,10 +85,10 @@ func New(e *env.Env, server api.Server, client api.Client) *Row {
 
 	var toggle *widgets.Button
 	if client.Status == "suspended" {
-		toggle = widgets.NewButton("Activate", theme.MediaPlayIcon(), func() { r.setSuspended(false) })
+		toggle = widgets.NewButton(lang.L("Activate"), theme.MediaPlayIcon(), func() { r.setSuspended(false) })
 		toggle.Importance = widget.SuccessImportance
 	} else {
-		toggle = widgets.NewButton("Suspend", theme.MediaPauseIcon(), func() { r.setSuspended(true) })
+		toggle = widgets.NewButton(lang.L("Suspend"), theme.MediaPauseIcon(), func() { r.setSuspended(true) })
 		toggle.Importance = widget.WarningImportance
 	}
 
@@ -115,20 +115,30 @@ func (r *Row) CanvasObject() fyne.CanvasObject {
 // Apply pushes one traffic snapshot into the labels. Must run on the UI
 // goroutine.
 func (r *Row) Apply(data api.ClientTraffic) {
-	r.traffic.Text = fmt.Sprintf("RX %s · TX %s", data.Received, data.Sent)
+	r.traffic.Text = trafficText(data.Received, data.Sent)
 	r.traffic.Refresh()
 
-	r.handshake.Text = "handshake: " + data.LastHandshake
+	r.handshake.Text = handshakeText(data.LastHandshake)
 	r.handshake.Refresh()
 
 	endpoint := data.Endpoint
 	if endpoint == "" {
-		endpoint = "endpoint: —"
-	} else {
-		endpoint = "endpoint: " + endpoint
+		endpoint = "—"
 	}
-	r.endpoint.Text = endpoint
+	r.endpoint.Text = endpointText(endpoint)
 	r.endpoint.Refresh()
+}
+
+func trafficText(rx, tx string) string {
+	return lang.L("RX {{.RX}} · TX {{.TX}}", map[string]any{"RX": rx, "TX": tx})
+}
+
+func handshakeText(when string) string {
+	return lang.L("handshake: {{.When}}", map[string]any{"When": when})
+}
+
+func endpointText(endpoint string) string {
+	return lang.L("endpoint: {{.Endpoint}}", map[string]any{"Endpoint": endpoint})
 }
 
 // ── Actions ──────────────────────────────────────────────────────────────────
@@ -136,12 +146,13 @@ func (r *Row) Apply(data api.ClientTraffic) {
 func (r *Row) setSuspended(suspend bool) {
 	e, client := r.env, r.client
 
-	question := fmt.Sprintf("Activate %q again?", client.Name)
+	name := map[string]any{"Name": client.Name}
+	question := lang.L("Activate \"{{.Name}}\" again?", name)
 	if suspend {
-		question = fmt.Sprintf("Suspend %q? The client loses its connection until reactivated.", client.Name)
+		question = lang.L("Suspend \"{{.Name}}\"? The client loses its connection until reactivated.", name)
 	}
 
-	dialogs.Confirm(e.Win, "Change client state", question, func() {
+	dialogs.Confirm(e.Win, lang.L("Change client state"), question, func() {
 		go func() {
 			var err error
 			if suspend {
@@ -154,9 +165,9 @@ func (r *Row) setSuspended(suspend bool) {
 				return
 			}
 			if suspend {
-				e.Notify.OK("Client %q suspended", client.Name)
+				e.Notify.OK(lang.L("Client \"{{.Name}}\" suspended", name))
 			} else {
-				e.Notify.OK("Client %q activated", client.Name)
+				e.Notify.OK(lang.L("Client \"{{.Name}}\" activated", name))
 			}
 			e.Reload()
 		}()
@@ -166,13 +177,14 @@ func (r *Row) setSuspended(suspend bool) {
 func (r *Row) confirmDelete() {
 	e, client := r.env, r.client
 
-	dialogs.Confirm(e.Win, "Delete client", fmt.Sprintf("Delete %q?", client.Name), func() {
+	name := map[string]any{"Name": client.Name}
+	dialogs.Confirm(e.Win, lang.L("Delete client"), lang.L("Delete \"{{.Name}}\"?", name), func() {
 		go func() {
 			if err := e.Backend.DeleteClient(r.server.ID, client.ID); err != nil {
 				e.Notify.Fail(err)
 				return
 			}
-			e.Notify.OK("Client %q deleted", client.Name)
+			e.Notify.OK(lang.L("Client \"{{.Name}}\" deleted", name))
 			e.Reload()
 		}()
 	})

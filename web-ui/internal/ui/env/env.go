@@ -31,8 +31,11 @@ type Env struct {
 
 // Notifier is the page's feedback channel: a transient note in the footer
 // for outcomes, a dialog for failures. All three are safe from any goroutine.
+//
+// The message is shown as given: callers localise it with lang.L, which does
+// the substitution as well, so there is no format to fill in here.
 type Notifier interface {
-	OK(format string, args ...any)
-	Warn(format string, args ...any)
+	OK(message string)
+	Warn(message string)
 	Fail(err error)
 }

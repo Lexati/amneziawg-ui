@@ -3,12 +3,12 @@
 package serverentry
 
 import (
-	"fmt"
 	"strings"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/lang"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
@@ -49,16 +49,16 @@ func New(e *env.Env, srv api.Server) *Card {
 	}
 
 	meta := []string{
-		"ID " + srv.ID,
-		fmt.Sprintf("Port %d", srv.Port),
-		"Subnet " + srv.Subnet,
-		fmt.Sprintf("MTU %d", srv.MTU),
+		lang.L("ID {{.ID}}", map[string]any{"ID": srv.ID}),
+		lang.L("Port {{.Port}}", map[string]any{"Port": srv.Port}),
+		lang.L("Subnet {{.Subnet}}", map[string]any{"Subnet": srv.Subnet}),
+		lang.L("MTU {{.MTU}}", map[string]any{"MTU": srv.MTU}),
 	}
 	if srv.ObfuscationEnabled {
-		meta = append(meta, "Obfuscated (AWG 3.1)")
+		meta = append(meta, lang.L("Obfuscated (AWG 3.1)"))
 	}
 
-	c.ifaceText = widgets.SmallText("Interface: RX — · TX —", style.Muted)
+	c.ifaceText = widgets.SmallText(interfaceTraffic("—", "—"), style.Muted)
 
 	remove := widgets.NewButton("", theme.DeleteIcon(), c.confirmDelete)
 	remove.Importance = widget.DangerImportance
@@ -70,20 +70,20 @@ func New(e *env.Env, srv api.Server) *Card {
 			c.ifaceText,
 		),
 		container.NewHBox(
-			container.NewCenter(widgets.Badge(strings.ToUpper(srv.Status), statusColor)),
+			container.NewCenter(widgets.Badge(strings.ToUpper(lang.L(srv.Status)), statusColor)),
 			container.NewCenter(remove),
 		),
 	)
 
-	start := widgets.NewButton("Start", theme.MediaPlayIcon(), func() { c.setRunning(true) })
+	start := widgets.NewButton(lang.L("Start"), theme.MediaPlayIcon(), func() { c.setRunning(true) })
 	start.Importance = widget.SuccessImportance
-	stop := widgets.NewButton("Stop", theme.MediaStopIcon(), func() { c.setRunning(false) })
+	stop := widgets.NewButton(lang.L("Stop"), theme.MediaStopIcon(), func() { c.setRunning(false) })
 	stop.Importance = widget.DangerImportance
-	add := widgets.NewButton("Add client", theme.ContentAddIcon(), func() {
+	add := widgets.NewButton(lang.L("Add client"), theme.ContentAddIcon(), func() {
 		clientdialogs.ShowEditor(e, srv, nil)
 	})
 	add.Importance = widget.HighImportance
-	config := widgets.NewButton("Show config", theme.DocumentIcon(), func() {
+	config := widgets.NewButton(lang.L("Show config"), theme.DocumentIcon(), func() {
 		serverdialogs.ShowConfig(e, srv.ID)
 	})
 
@@ -120,8 +120,12 @@ func (c *Card) ApplyInterfaceTraffic(traffic api.InterfaceTraffic) {
 	if traffic != nil {
 		rx, tx = traffic["rx"], traffic["tx"]
 	}
-	c.ifaceText.Text = fmt.Sprintf("Interface: RX %s · TX %s", rx, tx)
+	c.ifaceText.Text = interfaceTraffic(rx, tx)
 	c.ifaceText.Refresh()
+}
+
+func interfaceTraffic(rx, tx string) string {
+	return lang.L("Interface: RX {{.RX}} · TX {{.TX}}", map[string]any{"RX": rx, "TX": tx})
 }
 
 // ApplyPeerTraffic hands the per-client snapshot down to the rows. Must run
@@ -146,10 +150,11 @@ func (c *Card) setRunning(start bool) {
 			e.Notify.Fail(err)
 			return
 		}
+		name := map[string]any{"Name": srv.Name}
 		if start {
-			e.Notify.OK("Server %q started", srv.Name)
+			e.Notify.OK(lang.L("Server \"{{.Name}}\" started", name))
 		} else {
-			e.Notify.OK("Server %q stopped", srv.Name)
+			e.Notify.OK(lang.L("Server \"{{.Name}}\" stopped", name))
 		}
 		e.Reload()
 	}()
@@ -158,15 +163,16 @@ func (c *Card) setRunning(start bool) {
 func (c *Card) confirmDelete() {
 	e, srv := c.env, c.server
 
-	dialogs.Confirm(e.Win, "Delete server",
-		fmt.Sprintf("Delete %q and all of its clients?", srv.Name),
+	name := map[string]any{"Name": srv.Name}
+	dialogs.Confirm(e.Win, lang.L("Delete server"),
+		lang.L("Delete \"{{.Name}}\" and all of its clients?", name),
 		func() {
 			go func() {
 				if err := e.Backend.DeleteServer(srv.ID); err != nil {
 					e.Notify.Fail(err)
 					return
 				}
-				e.Notify.OK("Server %q deleted", srv.Name)
+				e.Notify.OK(lang.L("Server \"{{.Name}}\" deleted", name))
 				e.Reload()
 			}()
 		})

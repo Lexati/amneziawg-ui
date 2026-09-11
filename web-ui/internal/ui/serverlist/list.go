@@ -5,6 +5,7 @@ package serverlist
 import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/lang"
 	"fyne.io/fyne/v2/widget"
 
 	"amneziawg-web-ui/web-ui/api"
@@ -28,7 +29,7 @@ type List struct {
 func New(e *env.Env) *List {
 	l := &List{env: e, box: container.NewVBox(), cards: map[string]*serverentry.Card{}}
 
-	l.empty = widget.NewLabel("No servers created yet. Create your first server above.")
+	l.empty = widget.NewLabel(lang.L("No servers created yet. Create your first server above."))
 	l.empty.Alignment = fyne.TextAlignCenter
 
 	l.object = container.NewVBox(l.box, l.empty)

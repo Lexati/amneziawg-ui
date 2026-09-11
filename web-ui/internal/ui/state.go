@@ -2,13 +2,13 @@ package ui
 
 import (
 	"encoding/json"
-	"fmt"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/lang"
 
 	"amneziawg-web-ui/web-ui/api"
 	"amneziawg-web-ui/web-ui/internal/ui/newserver"
@@ -73,10 +73,10 @@ func (s *state) TakenPorts() map[int]string {
 
 	taken := make(map[int]string, len(s.servers)+1)
 	if s.webUIPort > 0 {
-		taken[s.webUIPort] = "the web UI"
+		taken[s.webUIPort] = lang.L("the web UI")
 	}
 	for _, server := range s.servers {
-		taken[server.Port] = fmt.Sprintf("server %q", server.Name)
+		taken[server.Port] = lang.L("server \"{{.Name}}\"", map[string]any{"Name": server.Name})
 	}
 	return taken
 }
@@ -130,7 +130,7 @@ func (u *UI) loadSystemStatus() {
 		u.unreachable()
 		return
 	}
-	u.setTransport("online", style.Success)
+	u.setTransport(lang.L("online"), style.Success)
 
 	port, err := strconv.Atoi(strings.TrimSpace(status.Environment.WebUIPort))
 	u.mu.Lock()
@@ -140,8 +140,9 @@ func (u *UI) loadSystemStatus() {
 	u.serverDefaultMTU = status.Environment.DefaultMTU
 	u.mu.Unlock()
 
-	u.setSummary(fmt.Sprintf("%d/%d servers running · %d clients",
-		status.ActiveServers, status.TotalServers, status.TotalClients))
+	u.setSummary(lang.L("{{.Active}}/{{.Total}} servers running",
+		map[string]any{"Active": status.ActiveServers, "Total": status.TotalServers}) +
+		" · " + lang.N("{{.Count}} clients", status.TotalClients, map[string]any{"Count": status.TotalClients}))
 	u.setPublicIP(status.PublicIP)
 }
 
@@ -163,7 +164,7 @@ func (u *UI) refreshPublicIP() {
 			return
 		}
 		u.setPublicIP(ip)
-		u.feedback.OK("Public IP refreshed")
+		u.feedback.OK(lang.L("Public IP refreshed"))
 		u.reloadServers()
 	}()
 }

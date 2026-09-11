@@ -4,15 +4,29 @@
 package main
 
 import (
+	"embed"
+
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
+	"fyne.io/fyne/v2/lang"
 
 	"amneziawg-web-ui/web-ui/internal/fixes"
 	"amneziawg-web-ui/web-ui/internal/ui"
 )
 
+// The UI strings, one JSON file per language (en.json is the fallback). The
+// language is picked from the browser's navigator.languages, so the page
+// comes up in the user's language with nothing to configure.
+//
+//go:embed translation
+var translations embed.FS
+
 func main() {
 	application := app.NewWithID("io.amnezia.webui")
+
+	if err := lang.AddTranslationsFS(translations, "translation"); err != nil {
+		fyne.LogError("loading translations", err)
+	}
 
 	// Upstream workarounds next: they have to be in place before the window
 	// takes any input, and one of them replaces the app's clipboard.

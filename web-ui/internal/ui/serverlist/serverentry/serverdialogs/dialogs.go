@@ -8,6 +8,7 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/lang"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
@@ -38,59 +39,59 @@ func presentConfig(e *env.Env, info api.ServerInfo) {
 	}
 
 	basics := widgets.InfoGrid([][2]string{
-		{"Interface", info.Interface},
-		{"Port", fmt.Sprintf("%d", info.Port)},
-		{"Subnet", info.Subnet},
-		{"Server IP", info.ServerIP},
-		{"Public IP", info.PublicIP},
+		{lang.L("Interface"), info.Interface},
+		{lang.L("Port"), fmt.Sprintf("%d", info.Port)},
+		{lang.L("Subnet"), info.Subnet},
+		{lang.L("Server IP"), info.ServerIP},
+		{lang.L("Public IP"), info.PublicIP},
 		{"MTU", fmt.Sprintf("%d", info.MTU)},
-		{"Protocol", info.Protocol},
-		{"Clients", fmt.Sprintf("%d", info.ClientsCount)},
+		{lang.L("Protocol"), info.Protocol},
+		{lang.L("Clients"), fmt.Sprintf("%d", info.ClientsCount)},
 		{"DNS", strings.Join(info.DNS, ", ")},
-		{"Public key", info.PublicKey},
+		{lang.L("Public key"), info.PublicKey},
 	})
 
 	head := container.NewHBox(
 		widgets.SectionTitle(info.Name),
-		container.NewCenter(widgets.Badge(strings.ToUpper(info.Status), statusColor)),
+		container.NewCenter(widgets.Badge(strings.ToUpper(lang.L(info.Status)), statusColor)),
 	)
 
 	body := container.NewVBox(head, basics)
 
 	if info.ObfuscationEnabled && info.ObfuscationParams != nil {
 		body.Add(widgets.Separator())
-		body.Add(widgets.SectionTitle("Obfuscation parameters (AmneziaWG 3.1)"))
+		body.Add(widgets.SectionTitle(lang.L("Obfuscation parameters (AmneziaWG 3.1)")))
 		body.Add(obfuscationGrid(info.ObfuscationParams))
 	}
 
 	if len(info.DefaultISettings) > 0 {
 		body.Add(widgets.Separator())
-		body.Add(widgets.SectionTitle("Default I-settings"))
+		body.Add(widgets.SectionTitle(lang.L("Default I-settings")))
 		rows := make([][2]string, 0, len(info.DefaultISettings))
 		for i := 1; i <= 5; i++ {
 			key := fmt.Sprintf("i%d", i)
 			value := info.DefaultISettings[key]
 			if value == "" {
-				value = "empty"
+				value = lang.L("empty")
 			} else {
 				value = widgets.Truncate(value, 60)
 			}
 			rows = append(rows, [2]string{strings.ToUpper(key), value})
 		}
 		body.Add(widgets.InfoGrid(rows))
-		body.Add(widgets.MutedNote("These defaults are used for new clients when \"Apply I-settings\" is enabled."))
+		body.Add(widgets.MutedNote(lang.L("These defaults are used for new clients when \"Apply I-settings\" is enabled.")))
 	}
 
 	body.Add(widgets.Separator())
-	body.Add(widgets.SectionTitle("Configuration preview"))
+	body.Add(widgets.SectionTitle(lang.L("Configuration preview")))
 	preview, _ := widgets.MonospaceView(info.ConfigPreview)
 	preview.SetMinRowsVisible(10)
 	body.Add(preview)
 
-	full := widgets.NewButton("View full config", theme.DocumentIcon(), func() {
+	full := widgets.NewButton(lang.L("View full config"), theme.DocumentIcon(), func() {
 		showRaw(e, info.ID)
 	})
-	download := widgets.NewButton("Download config", theme.DownloadIcon(), func() {
+	download := widgets.NewButton(lang.L("Download config"), theme.DownloadIcon(), func() {
 		browser.OpenURL(e.Backend.ServerConfigURL(info.ID))
 	})
 	download.Importance = widget.HighImportance
@@ -98,7 +99,7 @@ func presentConfig(e *env.Env, info api.ServerInfo) {
 	// The actions stay outside the scroll area so they are always reachable.
 	content := container.NewBorder(nil, container.NewHBox(full, download), nil, nil, dialogs.Scrolled(body))
 
-	dialogs.Show(e.Win, "Server configuration", "Close", content, dialogs.Size(e.Win, 880, 720))
+	dialogs.Show(e.Win, lang.L("Server configuration"), lang.L("Close"), content, dialogs.Size(e.Win, 880, 720))
 }
 
 func showRaw(e *env.Env, serverID string) {
@@ -113,10 +114,10 @@ func showRaw(e *env.Env, serverID string) {
 			view, _ := widgets.MonospaceView(config.ConfigContent)
 			view.SetMinRowsVisible(20)
 
-			copyButton := widgets.NewButton("Copy", theme.ContentCopyIcon(), func() {
+			copyButton := widgets.NewButton(lang.L("Copy"), theme.ContentCopyIcon(), func() {
 				dialogs.Copy(e.Notify, config.ConfigContent)
 			})
-			download := widgets.NewButton("Download", theme.DownloadIcon(), func() {
+			download := widgets.NewButton(lang.L("Download"), theme.DownloadIcon(), func() {
 				browser.OpenURL(e.Backend.ServerConfigURL(config.ServerID))
 			})
 			download.Importance = widget.HighImportance
@@ -127,7 +128,8 @@ func showRaw(e *env.Env, serverID string) {
 					container.NewHBox(copyButton, download),
 				), nil, nil, nil, view)
 
-			dialogs.Show(e.Win, "Raw configuration: "+config.ServerName, "Close", body, dialogs.Size(e.Win, 900, 760))
+			dialogs.Show(e.Win, lang.L("Raw configuration: {{.Name}}", map[string]any{"Name": config.ServerName}),
+				lang.L("Close"), body, dialogs.Size(e.Win, 900, 760))
 		})
 	}()
 }
@@ -176,7 +178,7 @@ func obfuscationGrid(p *api.ObfuscationParams) fyne.CanvasObject {
 
 func onOff(value bool) string {
 	if value {
-		return "on"
+		return lang.L("on")
 	}
-	return "off"
+	return lang.L("off")
 }

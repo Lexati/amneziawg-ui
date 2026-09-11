@@ -41,6 +41,13 @@ window starts; keep such patches out of the UI code.
 Build the bundle with `make web-ui`; it lands in `web-ui/wasm`, which the
 server serves straight off disk under the relative path `./web-ui/wasm`
 
+## Frontend translations
+
+The UI is in English and Russian, through Fyne's `lang` package
+(https://docs.fyne.io/explore/translations/). `web-ui/translation/{en,ru}.json`
+are embedded by `main.go` and loaded with `lang.AddTranslationsFS`; the
+language comes from the browser's `navigator.languages`, `en` is the fallback.
+
 # Running the project, and check docker build
 
 In the project root directory, run command:
