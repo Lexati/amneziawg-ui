@@ -1,4 +1,4 @@
-package ui
+package newserver
 
 import (
 	"strings"
@@ -7,11 +7,35 @@ import (
 	"amneziawg-web-ui/web-ui/api"
 )
 
+// pageState is a State with whatever the test needs the page to have heard
+// from the backend.
+type pageState struct {
+	mtu     int
+	subnets []string
+}
+
+func (s pageState) ServerMTU() int {
+	if s.mtu < api.MinMTU || s.mtu > api.MaxMTU {
+		return DefaultMTU
+	}
+	return s.mtu
+}
+
+func (s pageState) TakenPorts() map[int]string { return map[int]string{} }
+
+func (s pageState) TakenSubnets() map[string]bool {
+	taken := map[string]bool{}
+	for _, subnet := range s.subnets {
+		taken[subnet] = true
+	}
+	return taken
+}
+
 // The operator sets DEFAULT_MTU on the backend; the simple mode has no MTU
 // field to show it in, so it has to be what a server created there actually
 // gets. It used to send a number of its own and the setting was ignored.
 func TestSimpleModeFollowsTheBackendMTU(t *testing.T) {
-	f := &serverForm{ui: &UI{serverDefaultMTU: 1280}}
+	f := &Form{state: pageState{mtu: 1280}}
 
 	req := f.generated("srv", 54844)
 	if req.MTU != 1280 {
@@ -32,10 +56,10 @@ func TestSimpleModeFollowsTheBackendMTU(t *testing.T) {
 // default in place rather than sending something invalid.
 func TestSimpleModeFallsBackToTheBuiltInMTU(t *testing.T) {
 	for _, reported := range []int{0, 1279, 1441, -1} {
-		f := &serverForm{ui: &UI{serverDefaultMTU: reported}}
+		f := &Form{state: pageState{mtu: reported}}
 
-		if got := f.generated("srv", 54844).MTU; got != defaultMTU {
-			t.Errorf("backend reported %d: MTU = %d, want the built-in %d", reported, got, defaultMTU)
+		if got := f.generated("srv", 54844).MTU; got != DefaultMTU {
+			t.Errorf("backend reported %d: MTU = %d, want the built-in %d", reported, got, DefaultMTU)
 		}
 	}
 }
@@ -44,7 +68,7 @@ func TestSimpleModeFallsBackToTheBuiltInMTU(t *testing.T) {
 // other field derived. It is what "Create server" sends with "Advanced
 // settings" unticked.
 func TestSimpleModePayloadIsValid(t *testing.T) {
-	f := &serverForm{ui: &UI{}}
+	f := &Form{state: pageState{}}
 
 	req := f.generated("My VPN Server", 54844)
 
@@ -54,8 +78,8 @@ func TestSimpleModePayloadIsValid(t *testing.T) {
 	if req.Subnet != "10.0.0.0/24" {
 		t.Errorf("Subnet = %q, want the first free /24", req.Subnet)
 	}
-	if req.MTU != defaultMTU {
-		t.Errorf("MTU = %d, want %d", req.MTU, defaultMTU)
+	if req.MTU != DefaultMTU {
+		t.Errorf("MTU = %d, want %d", req.MTU, DefaultMTU)
 	}
 	if req.DNS != defaultDNS {
 		t.Errorf("DNS = %v, want %q", req.DNS, defaultDNS)
@@ -77,8 +101,7 @@ func TestSimpleModePayloadIsValid(t *testing.T) {
 // A second server created in the simple mode must not land on the subnet the
 // first one took, since neither the form nor the backend would notice.
 func TestSimpleModePicksAFreeSubnet(t *testing.T) {
-	f := &serverForm{ui: &UI{}}
-	f.ui.servers = []api.Server{{Subnet: "10.0.0.0/24"}, {Subnet: "10.1.0.0/24"}}
+	f := &Form{state: pageState{subnets: []string{"10.0.0.0/24", "10.1.0.0/24"}}}
 
 	if got := f.generated("third", 54846).Subnet; got != "10.2.0.0/24" {
 		t.Errorf("Subnet = %q, want 10.2.0.0/24", got)

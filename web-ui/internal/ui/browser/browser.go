@@ -1,6 +1,9 @@
 //go:build js && wasm
 
-package ui
+// Package browser is the page's bridge to the JavaScript host: where the
+// app was served from, how to open a link, write the clipboard and hand the
+// viewer a file. Nothing else in the UI touches syscall/js.
+package browser
 
 import (
 	"encoding/base64"
@@ -8,23 +11,23 @@ import (
 )
 
 // The browser is the only supported target: the UI always runs inside the
-// page served by the Go backend it talks to. See browser_unsupported.go for
+// page served by the Go backend it talks to. See unsupported.go for
 // the stubs that keep a native toolchain able to type-check this package.
 
-// baseURL is the origin the app was served from, so every API call stays
+// Origin is the origin the app was served from, so every API call stays
 // same-origin and the browser replays the basic-auth credentials it already
 // holds for this realm.
-func baseURL() string {
+func Origin() string {
 	return js.Global().Get("location").Get("origin").String()
 }
 
-// openURL asks the browser to follow a link in a new tab. Used for the
+// OpenURL asks the browser to follow a link in a new tab. Used for the
 // download endpoints, which reply with a Content-Disposition header.
-func openURL(url string) {
+func OpenURL(url string) {
 	js.Global().Call("open", url, "_blank")
 }
 
-// copyText puts text on the system clipboard and reports through done whether
+// CopyText puts text on the system clipboard and reports through done whether
 // that worked.
 //
 // Fyne's own Clipboard() is unusable here: on wasm it reaches straight into
@@ -33,7 +36,7 @@ func openURL(url string) {
 // undefined there and the call panics the whole application instead of
 // failing. Hence the direct implementation, with the legacy execCommand path
 // as the fallback for exactly that case.
-func copyText(text string, done func(ok bool)) {
+func CopyText(text string, done func(ok bool)) {
 	clipboard := js.Global().Get("navigator").Get("clipboard")
 	if !clipboard.Truthy() || !clipboard.Get("writeText").Truthy() {
 		done(copyViaTextArea(text))
@@ -99,9 +102,9 @@ func copyViaTextArea(text string) bool {
 	return copied
 }
 
-// saveBytes hands the viewer a generated file (the QR code image) by clicking
+// SaveBytes hands the viewer a generated file (the QR code image) by clicking
 // a synthetic anchor carrying a data: URL.
-func saveBytes(name, mime string, data []byte) {
+func SaveBytes(name, mime string, data []byte) {
 	doc := js.Global().Get("document")
 	anchor := doc.Call("createElement", "a")
 	anchor.Set("href", "data:"+mime+";base64,"+base64.StdEncoding.EncodeToString(data))

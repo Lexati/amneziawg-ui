@@ -1,6 +1,6 @@
 //go:build !js || !wasm
 
-package ui
+package browser
 
 // Linux (and every other native target) is not supported: this frontend is a
 // WebAssembly application that only works inside a browser, where it can read
@@ -15,18 +15,18 @@ package ui
 const unsupportedPlatform = "the AmneziaWG Web UI frontend runs in the browser only: " +
 	"build it for WebAssembly with \"make web-ui\" (GOOS=js GOARCH=wasm)"
 
-func baseURL() string {
+func Origin() string {
 	panic(unsupportedPlatform)
 }
 
-func openURL(string) {
+func OpenURL(string) {
 	panic(unsupportedPlatform)
 }
 
-func copyText(string, func(bool)) {
+func CopyText(string, func(bool)) {
 	panic(unsupportedPlatform)
 }
 
-func saveBytes(string, string, []byte) {
+func SaveBytes(string, string, []byte) {
 	panic(unsupportedPlatform)
 }

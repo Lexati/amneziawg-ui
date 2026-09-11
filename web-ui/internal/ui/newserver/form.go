@@ -1,4 +1,6 @@
-package ui
+// Package newserver is the collapsible "Create New VPN Server" panel at the
+// top of the page.
+package newserver
 
 import (
 	"fmt"
@@ -7,12 +9,13 @@ import (
 	"strings"
 
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
 	"amneziawg-web-ui/web-ui/api"
+	"amneziawg-web-ui/web-ui/internal/ui/env"
+	"amneziawg-web-ui/web-ui/internal/ui/widgets"
 )
 
 var (
@@ -32,16 +35,37 @@ const (
 	defaultPort   = "54844"
 	defaultSubnet = "10.0.0.0/24"
 	defaultDNS    = "8.8.8.8,1.1.1.1"
-	// The MTU used until /api/system/status reports what the backend was
-	// configured with; the range it has to be in lives in api.
-	defaultMTU = 1420
 )
 
-// serverForm is the collapsible "Create New VPN Server" panel. It has two
-// modes: the default one asks for a name and a port and generates everything
-// else, the advanced one exposes every knob (see setAdvanced).
-type serverForm struct {
-	ui *UI
+// DefaultMTU is the MTU used until /api/system/status reports what the
+// backend was configured with; the range it has to be in lives in api. The
+// page's State falls back to it, which is why it is exported.
+const DefaultMTU = 1420
+
+// State is what the form reads from the page: what a new server must not
+// collide with, and what it starts from. All three are safe from any
+// goroutine.
+type State interface {
+	// ServerMTU is the MTU a new server starts from: what the backend was
+	// configured with, or a built-in default while that is unknown.
+	ServerMTU() int
+	// TakenPorts maps every port already spoken for to what holds it: an
+	// existing server, or the panel's own listener.
+	TakenPorts() map[int]string
+	// TakenSubnets is the set of subnets existing servers occupy.
+	TakenSubnets() map[string]bool
+}
+
+// Form is the panel. It has two modes: the default one asks for a name and a
+// port and generates everything else, the advanced one exposes every knob
+// (see setAdvanced).
+type Form struct {
+	env   *env.Env
+	state State
+
+	// reflow tells the page its content height changed, so it can re-clamp
+	// the scroll offset; see toggleOpen.
+	reflow func()
 
 	name     *widget.Entry
 	port     *widget.Entry
@@ -74,9 +98,9 @@ type serverForm struct {
 
 	obfCard fyne.CanvasObject
 	errors  *widget.Label
-	create  *pointerButton
+	create  *widgets.Button
 
-	toggle *pointerButton
+	toggle *widgets.Button
 	body   *fyne.Container
 	panel  *fyne.Container
 }
@@ -92,17 +116,18 @@ type advancedField struct {
 	entry  *widget.Entry
 }
 
-func newServerForm(u *UI) *serverForm {
-	f := &serverForm{ui: u}
+// New builds the panel. reflow is called whenever it changes height.
+func New(e *env.Env, state State, reflow func()) *Form {
+	f := &Form{env: e, state: state, reflow: reflow}
 
-	f.name = entryWithPlaceholder("My VPN Server")
-	f.port = numberEntry(defaultPort, "1-65535")
-	f.subnet = entryWithText(defaultSubnet)
-	f.mtuSeed = strconv.Itoa(u.serverMTU())
-	f.mtu = numberEntry(f.mtuSeed, fmt.Sprintf("%d-%d", api.MinMTU, api.MaxMTU))
+	f.name = widgets.EntryWithPlaceholder("My VPN Server")
+	f.port = widgets.NumberEntry(defaultPort, "1-65535")
+	f.subnet = widgets.EntryWithText(defaultSubnet)
+	f.mtuSeed = strconv.Itoa(state.ServerMTU())
+	f.mtu = widgets.NumberEntry(f.mtuSeed, fmt.Sprintf("%d-%d", api.MinMTU, api.MaxMTU))
 
-	f.dns = entryWithText(defaultDNS)
-	f.endpoint = entryWithPlaceholder("leave empty to use the auto-detected public IP")
+	f.dns = widgets.EntryWithText(defaultDNS)
+	f.endpoint = widgets.EntryWithPlaceholder("leave empty to use the auto-detected public IP")
 
 	f.advancedMode = widget.NewCheck("Advanced settings", f.setAdvanced)
 
@@ -117,8 +142,8 @@ func newServerForm(u *UI) *serverForm {
 	// The two fields the simple mode asks for sit side by side; the rest of
 	// them only exist in the advanced mode and keep the usual form rows.
 	basics := container.NewGridWithColumns(2,
-		labeled("Server name", f.name),
-		labeled("Port (1-65535)", f.port),
+		widgets.Labeled("Server name", f.name),
+		widgets.Labeled("Port (1-65535)", f.port),
 	)
 	f.extras = widget.NewForm(
 		&widget.FormItem{Text: "Subnet", Widget: f.subnet, HintText: "e.g. 10.0.0.0/24"},
@@ -139,7 +164,7 @@ func newServerForm(u *UI) *serverForm {
 	f.errors.Importance = widget.DangerImportance
 	f.errors.Hide()
 
-	f.create = button("Create server", theme.ConfirmIcon(), f.submit)
+	f.create = widgets.NewButton("Create server", theme.ConfirmIcon(), f.submit)
 	f.create.Importance = widget.HighImportance
 
 	f.obfCard = f.buildObfuscation()
@@ -166,7 +191,7 @@ func newServerForm(u *UI) *serverForm {
 	f.body = container.NewPadded(content)
 	f.body.Hide()
 
-	f.toggle = button("Create New VPN Server", theme.MenuDropDownIcon(), f.toggleOpen)
+	f.toggle = widgets.NewButton("Create New VPN Server", theme.MenuDropDownIcon(), f.toggleOpen)
 	f.toggle.Alignment = widget.ButtonAlignLeading
 	f.toggle.Importance = widget.LowImportance
 
@@ -175,11 +200,12 @@ func newServerForm(u *UI) *serverForm {
 	return f
 }
 
-func (f *serverForm) canvasObject() fyne.CanvasObject {
-	return container.NewPadded(card(f.panel))
+// CanvasObject is the panel as the page places it.
+func (f *Form) CanvasObject() fyne.CanvasObject {
+	return container.NewPadded(widgets.Card(f.panel))
 }
 
-func (f *serverForm) toggleOpen() {
+func (f *Form) toggleOpen() {
 	if f.body.Visible() {
 		f.collapse()
 		return
@@ -192,7 +218,7 @@ func (f *serverForm) toggleOpen() {
 
 	f.body.Show()
 	f.toggle.SetIcon(theme.MenuDropUpIcon())
-	f.ui.clampScroll()
+	f.reflow()
 }
 
 // seedMTU puts the MTU the backend was configured with into the form, along
@@ -202,12 +228,12 @@ func (f *serverForm) toggleOpen() {
 // open is where the operator's DEFAULT_MTU can first be honoured. It only ever
 // overwrites its own last value: once the MTU has been typed over, the form is
 // the user's and reopening it must not undo that.
-func (f *serverForm) seedMTU() {
+func (f *Form) seedMTU() {
 	if f.mtu.Text != f.mtuSeed {
 		return
 	}
 
-	mtu := f.ui.serverMTU()
+	mtu := f.state.ServerMTU()
 	f.mtuSeed = strconv.Itoa(mtu)
 	f.mtu.SetText(f.mtuSeed)
 
@@ -217,16 +243,16 @@ func (f *serverForm) seedMTU() {
 	}
 }
 
-func (f *serverForm) collapse() {
+func (f *Form) collapse() {
 	f.body.Hide()
 	f.toggle.SetIcon(theme.MenuDropDownIcon())
-	f.ui.clampScroll()
+	f.reflow()
 }
 
 // setAdvanced switches between the two modes: the simple one shows a name and
 // a port and lets build() generate the rest, the advanced one adds the
 // remaining fields, the toggles and the obfuscation block.
-func (f *serverForm) setAdvanced(on bool) {
+func (f *Form) setAdvanced(on bool) {
 	if on {
 		f.simpleNote.Hide()
 		f.extras.Show()
@@ -240,13 +266,13 @@ func (f *serverForm) setAdvanced(on bool) {
 	}
 
 	f.showObfuscation()
-	f.ui.clampScroll()
+	f.reflow()
 }
 
 // showObfuscation keeps the parameter block visible only where it can be
 // edited: in advanced mode, with obfuscation turned on. The nil check covers
 // the SetChecked calls newServerForm makes before the block itself is built.
-func (f *serverForm) showObfuscation() {
+func (f *Form) showObfuscation() {
 	if f.obfCard == nil {
 		return
 	}
@@ -260,45 +286,45 @@ func (f *serverForm) showObfuscation() {
 // buildObfuscation lays out the AmneziaWG parameter block: the packet-shaping
 // numbers first, then the 3.1 switches, the header protection key and the
 // optional per-side timing knobs.
-func (f *serverForm) buildObfuscation() fyne.CanvasObject {
+func (f *Form) buildObfuscation() fyne.CanvasObject {
 	// The paddings start on a value the generator would pick for the MTU in
 	// the field above rather than on a fixed number, so opening the advanced
 	// mode and pressing Create straight away cannot hand out a padding too
 	// big for that MTU.
-	seed, _, _, _ := api.RecommendedPaddings(f.ui.serverMTU(), false)
+	seed, _, _, _ := api.RecommendedPaddings(f.state.ServerMTU(), false)
 	padding := strconv.Itoa(seed)
 
-	f.jc = numberEntry("8", "1-65535")
-	f.jmin = numberEntry("8", "1-65535")
-	f.jmax = numberEntry("80", "1-65535")
-	f.s1 = numberEntry(padding, "12-65535")
-	f.s2 = numberEntry(padding, "12-65535")
-	f.s3 = numberEntry(padding, "12-65535")
-	f.s4 = numberEntry(padding, "12-65535")
-	f.h1 = numberEntry("1", "1-4294967295")
-	f.h2 = numberEntry("2", "1-4294967295")
-	f.h3 = numberEntry("3", "1-4294967295")
-	f.h4 = numberEntry("4", "1-4294967295")
+	f.jc = widgets.NumberEntry("8", "1-65535")
+	f.jmin = widgets.NumberEntry("8", "1-65535")
+	f.jmax = widgets.NumberEntry("80", "1-65535")
+	f.s1 = widgets.NumberEntry(padding, "12-65535")
+	f.s2 = widgets.NumberEntry(padding, "12-65535")
+	f.s3 = widgets.NumberEntry(padding, "12-65535")
+	f.s4 = widgets.NumberEntry(padding, "12-65535")
+	f.h1 = widgets.NumberEntry("1", "1-4294967295")
+	f.h2 = widgets.NumberEntry("2", "1-4294967295")
+	f.h3 = widgets.NumberEntry("3", "1-4294967295")
+	f.h4 = widgets.NumberEntry("4", "1-4294967295")
 
 	// Captions carry the recommended value, placeholders the accepted range:
 	// the range only matters once you are deliberately leaving the
 	// recommendation, and the field shows it as soon as it is cleared.
 	junk := container.NewGridWithColumns(3,
-		labeled("Jc (recommended 4-12)", f.jc),
-		labeled("Jmin (recommended 8)", f.jmin),
-		labeled("Jmax (recommended 80)", f.jmax),
+		widgets.Labeled("Jc (recommended 4-12)", f.jc),
+		widgets.Labeled("Jmin (recommended 8)", f.jmin),
+		widgets.Labeled("Jmax (recommended 80)", f.jmax),
 	)
 	sizes := container.NewGridWithColumns(4,
-		labeled("S1 (recommended 15-150)", f.s1),
-		labeled("S2 (same as S1)", f.s2),
-		labeled("S3 (same as S1)", f.s3),
-		labeled("S4 (same as S1)", f.s4),
+		widgets.Labeled("S1 (recommended 15-150)", f.s1),
+		widgets.Labeled("S2 (same as S1)", f.s2),
+		widgets.Labeled("S3 (same as S1)", f.s3),
+		widgets.Labeled("S4 (same as S1)", f.s4),
 	)
 	headers := container.NewGridWithColumns(4,
-		labeled("H1 (recommended 1)", f.h1),
-		labeled("H2 (recommended 2)", f.h2),
-		labeled("H3 (recommended 3)", f.h3),
-		labeled("H4 (recommended 4)", f.h4),
+		widgets.Labeled("H1 (recommended 1)", f.h1),
+		widgets.Labeled("H2 (recommended 2)", f.h2),
+		widgets.Labeled("H3 (recommended 3)", f.h3),
+		widgets.Labeled("H4 (recommended 4)", f.h4),
 	)
 	f.distinctPaddings = widget.NewCheck("Roll S1-S4 separately instead of one value for all four", nil)
 
@@ -318,7 +344,7 @@ func (f *serverForm) buildObfuscation() fyne.CanvasObject {
 	limitsNote.Wrapping = fyne.TextWrapWord
 	limitsNote.TextStyle = fyne.TextStyle{Italic: true}
 
-	random := button("Generate random parameters", theme.ViewRefreshIcon(), f.randomise)
+	random := widgets.NewButton("Generate random parameters", theme.ViewRefreshIcon(), f.randomise)
 
 	f.randomTrailers = widget.NewCheck("RandomTrailers - append a random number of bytes to every packet", nil)
 	f.randomTrailers.SetChecked(true)
@@ -331,7 +357,7 @@ func (f *serverForm) buildObfuscation() fyne.CanvasObject {
 	togglesNote.Wrapping = fyne.TextWrapWord
 	togglesNote.TextStyle = fyne.TextStyle{Italic: true}
 
-	f.headerKey = entryWithPlaceholder("auto-generated if left empty")
+	f.headerKey = widgets.EntryWithPlaceholder("auto-generated if left empty")
 	keyNote := widget.NewLabel("AmneziaWG 3.x requires S1-S4 >= 12 and this key to match byte-for-byte between the server " +
 		"and every client config.")
 	keyNote.Wrapping = fyne.TextWrapWord
@@ -348,8 +374,8 @@ func (f *serverForm) buildObfuscation() fyne.CanvasObject {
 	}
 	advancedGrid := container.NewGridWithColumns(2)
 	for _, field := range f.advanced {
-		field.entry = entryWithPlaceholder(field.hint)
-		advancedGrid.Add(labeled(fmt.Sprintf("%s (%s)", field.key, field.limits), field.entry))
+		field.entry = widgets.EntryWithPlaceholder(field.hint)
+		advancedGrid.Add(widgets.Labeled(fmt.Sprintf("%s (%s)", field.key, field.limits), field.entry))
 	}
 
 	advancedNote := widget.NewLabel("Optional AWG 3.x timing knobs (an integer or an \"a-b\" range). They are applied " +
@@ -358,24 +384,24 @@ func (f *serverForm) buildObfuscation() fyne.CanvasObject {
 	advancedNote.TextStyle = fyne.TextStyle{Italic: true}
 
 	box := container.NewVBox(
-		sectionTitle("Obfuscation parameters"),
+		widgets.SectionTitle("Obfuscation parameters"),
 		junk, sizes, f.distinctPaddings, headers, sizesNote, limitsNote,
 		container.NewHBox(random),
-		separator(),
+		widgets.Separator(),
 		togglesNote, f.randomTrailers, f.disableCookies,
-		separator(),
-		labeled("HeaderProtectionKey (base64)", f.headerKey), keyNote,
-		separator(),
+		widgets.Separator(),
+		widgets.Labeled("HeaderProtectionKey (base64)", f.headerKey), keyNote,
+		widgets.Separator(),
 		advancedNote, advancedGrid,
 	)
 
-	return container.NewPadded(card(box))
+	return container.NewPadded(widgets.Card(box))
 }
 
 // randomise rolls the packet-shaping numbers, leaving the fields the user is
 // more likely to have deliberately set (Jmin/Jmax, the switches, the timing
 // knobs) alone.
-func (f *serverForm) randomise() {
+func (f *Form) randomise() {
 	p := api.GenerateObfuscation(f.mtuOrDefault(), f.distinctPaddings.Checked)
 
 	f.jc.SetText(strconv.Itoa(p.Jc))
@@ -391,41 +417,23 @@ func (f *serverForm) randomise() {
 
 // mtuOrDefault reads the MTU field for the callers that only need a plausible
 // number (parameter generation); build() does the reporting parse.
-func (f *serverForm) mtuOrDefault() int {
+func (f *Form) mtuOrDefault() int {
 	mtu, err := strconv.Atoi(strings.TrimSpace(f.mtu.Text))
 	if err != nil || mtu < api.MinMTU || mtu > api.MaxMTU {
-		return f.ui.serverMTU()
+		return f.state.ServerMTU()
 	}
 	return mtu
 }
 
-// takenPorts maps every port that is already spoken for to what holds it: an
-// existing server, or the panel's own listener. Two interfaces cannot share a
-// port, and the clash would otherwise only show up when the second one fails
-// to come up.
-func (f *serverForm) takenPorts() map[int]string {
-	f.ui.mu.Lock()
-	defer f.ui.mu.Unlock()
-
-	taken := make(map[int]string, len(f.ui.servers)+1)
-	if f.ui.webUIPort > 0 {
-		taken[f.ui.webUIPort] = "the web UI"
-	}
-	for _, server := range f.ui.servers {
-		taken[server.Port] = fmt.Sprintf("server %q", server.Name)
-	}
-	return taken
-}
-
 // nextFreePort walks up from whatever the field holds until it finds a port no
 // server has taken. An unparsable value is left alone - build() reports it.
-func (f *serverForm) nextFreePort() string {
+func (f *Form) nextFreePort() string {
 	port, err := strconv.Atoi(strings.TrimSpace(f.port.Text))
 	if err != nil || port < 1 || port > 65535 {
 		return f.port.Text
 	}
 
-	taken := f.takenPorts()
+	taken := f.state.TakenPorts()
 	for ; port <= 65535; port++ {
 		if _, used := taken[port]; !used {
 			return strconv.Itoa(port)
@@ -436,13 +444,8 @@ func (f *serverForm) nextFreePort() string {
 
 // nextFreeSubnet picks a /24 no existing server has taken, so servers created
 // in the simple mode never collide with each other.
-func (f *serverForm) nextFreeSubnet() string {
-	f.ui.mu.Lock()
-	taken := make(map[string]bool, len(f.ui.servers))
-	for _, server := range f.ui.servers {
-		taken[strings.TrimSpace(server.Subnet)] = true
-	}
-	f.ui.mu.Unlock()
+func (f *Form) nextFreeSubnet() string {
+	taken := f.state.TakenSubnets()
 
 	for i := range 256 {
 		candidate := fmt.Sprintf("10.%d.0.0/24", i)
@@ -453,7 +456,7 @@ func (f *serverForm) nextFreeSubnet() string {
 	return defaultSubnet
 }
 
-func (f *serverForm) showErrors(messages []string) {
+func (f *Form) showErrors(messages []string) {
 	if len(messages) == 0 {
 		f.errors.Hide()
 		return
@@ -464,7 +467,7 @@ func (f *serverForm) showErrors(messages []string) {
 
 // build validates the fields the current mode exposes and returns the payload
 // for POST /api/servers.
-func (f *serverForm) build() (api.CreateServerRequest, []string) {
+func (f *Form) build() (api.CreateServerRequest, []string) {
 	var problems []string
 
 	name := strings.TrimSpace(f.name.Text)
@@ -473,7 +476,7 @@ func (f *serverForm) build() (api.CreateServerRequest, []string) {
 	}
 
 	port, err := strconv.Atoi(strings.TrimSpace(f.port.Text))
-	switch taken, used := f.takenPorts()[port]; {
+	switch taken, used := f.state.TakenPorts()[port]; {
 	case err != nil, port < 1, port > 65535:
 		problems = append(problems, "Port must be between 1 and 65535")
 	case used:
@@ -530,9 +533,9 @@ func (f *serverForm) build() (api.CreateServerRequest, []string) {
 // everything else derived. The advanced entries are deliberately not read -
 // switching back to the simple mode means "forget what I typed there", not
 // "keep it but hide it".
-func (f *serverForm) generated(name string, port int) api.CreateServerRequest {
+func (f *Form) generated(name string, port int) api.CreateServerRequest {
 	autoStart, obfuscation := true, true
-	mtu := f.ui.serverMTU()
+	mtu := f.state.ServerMTU()
 	return api.CreateServerRequest{
 		Name:      name,
 		Port:      port,
@@ -548,7 +551,7 @@ func (f *serverForm) generated(name string, port int) api.CreateServerRequest {
 	}
 }
 
-func (f *serverForm) obfuscationParams(mtu int) (*api.ObfuscationParams, []string) {
+func (f *Form) obfuscationParams(mtu int) (*api.ObfuscationParams, []string) {
 	var problems []string
 
 	number := func(entry *widget.Entry, label string) int {
@@ -607,7 +610,7 @@ func (f *serverForm) obfuscationParams(mtu int) (*api.ObfuscationParams, []strin
 	return params, problems
 }
 
-func (f *serverForm) submit() {
+func (f *Form) submit() {
 	req, problems := f.build()
 	if len(problems) > 0 {
 		f.showErrors(problems)
@@ -619,7 +622,7 @@ func (f *serverForm) submit() {
 	f.create.SetText("Creating…")
 
 	go func() {
-		server, err := f.ui.backend.CreateServer(req)
+		server, err := f.env.Backend.CreateServer(req)
 
 		fyne.Do(func() {
 			f.create.Enable()
@@ -628,56 +631,18 @@ func (f *serverForm) submit() {
 
 		if err != nil {
 			fyne.Do(func() { f.showErrors([]string{err.Error()}) })
-			f.ui.fail(err)
+			f.env.Notify.Fail(err)
 			return
 		}
 
-		f.ui.ok("Server %q created", server.Name)
+		f.env.Notify.OK("Server %q created", server.Name)
 		fyne.Do(func() {
 			f.name.SetText("")
 			f.endpoint.SetText("")
 			f.collapse()
 		})
-		f.ui.reloadServers()
+		f.env.Reload()
 	}()
-}
-
-// ── Shared form helpers ──────────────────────────────────────────────────────
-
-func entryWithText(text string) *widget.Entry {
-	entry := newEntry()
-	entry.SetText(text)
-	return entry
-}
-
-func entryWithPlaceholder(placeholder string) *widget.Entry {
-	entry := newEntry()
-	entry.SetPlaceHolder(placeholder)
-	return entry
-}
-
-// numberEntry is a prefilled field that still shows its accepted range once
-// the value is cleared, which is exactly when the range is wanted.
-func numberEntry(text, limits string) *widget.Entry {
-	entry := newEntry()
-	entry.SetPlaceHolder(limits)
-	entry.SetText(text)
-	return entry
-}
-
-// labeled stacks a small caption above a field, for the dense parameter grids
-// where a full widget.Form row would waste horizontal space.
-func labeled(caption string, field fyne.CanvasObject) fyne.CanvasObject {
-	label := canvas.NewText(caption, colMuted)
-	label.TextSize = 11
-	return container.NewVBox(label, field)
-}
-
-func sectionTitle(text string) fyne.CanvasObject {
-	title := canvas.NewText(text, colText)
-	title.TextSize = 14
-	title.TextStyle = fyne.TextStyle{Bold: true}
-	return title
 }
 
 func splitList(value string) []string {

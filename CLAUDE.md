@@ -9,8 +9,7 @@ Placement of backend files in `internal` directory.
 - Own Go module in `web-ui`, built with `go tool fyne package -os wasm`
 
 Placement of frontend files in `web-ui` directory: `main.go` is the entry
-point and the UI lives in the `web-ui/internal/ui` package, which exports only
-`New`, `NewDarkTheme` and the `UI` type's `Build`/`Start`.
+point and the UI lives in the `web-ui/internal/ui`
 
 `web-ui/api` is what the two sides share, pulled into the root module via a
 `replace` directive: the wire structs, and the AmneziaWG rules that go with

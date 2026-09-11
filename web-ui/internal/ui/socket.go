@@ -11,6 +11,8 @@ import (
 	"github.com/zishang520/socket.io/v3/pkg/types"
 
 	"amneziawg-web-ui/web-ui/api"
+	"amneziawg-web-ui/web-ui/internal/ui/browser"
+	"amneziawg-web-ui/web-ui/internal/ui/style"
 )
 
 // connectSocket subscribes to the backend's Socket.IO feed. Traffic counters
@@ -30,28 +32,28 @@ func (u *UI) connectSocket() {
 	opts.SetReconnectionDelay(1000)
 	opts.SetReconnectionDelayMax(5000)
 
-	client, err := sio.Connect(baseURL(), opts)
+	client, err := sio.Connect(browser.Origin(), opts)
 	if err != nil {
 		fyne.LogError("socket.io connect failed", err)
-		u.setTransport("polling", colWarning)
+		u.setTransport("polling", style.Warning)
 		return
 	}
 	u.socket = client
 
 	client.On("connect", func(...any) {
 		u.socketLive.Store(true)
-		u.setTransport("live", colSuccess)
+		u.setTransport("live", style.Success)
 		go u.reloadServers()
 	})
 
 	client.On("disconnect", func(...any) {
 		u.socketLive.Store(false)
-		u.setTransport("reconnecting…", colWarning)
+		u.setTransport("reconnecting…", style.Warning)
 	})
 
 	client.On("connect_error", func(...any) {
 		u.socketLive.Store(false)
-		u.setTransport("polling", colWarning)
+		u.setTransport("polling", style.Warning)
 	})
 
 	client.On("status", func(args ...any) {

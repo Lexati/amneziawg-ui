@@ -1,4 +1,7 @@
-package ui
+// Package backend is the REST client for the Go/Fiber server the page was
+// served by. It knows the endpoints and the wire types, nothing about the
+// widgets that call it.
+package backend
 
 import (
 	"bytes"
@@ -11,33 +14,34 @@ import (
 	"time"
 
 	"amneziawg-web-ui/web-ui/api"
+	"amneziawg-web-ui/web-ui/internal/ui/browser"
 )
 
 // apiBase prefixes every backend endpoint path.
 const apiBase = "/api"
 
-// Backend is a thin REST client for the Go/Fiber backend. Requests are
+// Client is a thin REST client for the Go/Fiber backend. Requests are
 // relative to the page origin, so the browser replays the HTTP basic-auth
 // credentials it already holds for this realm.
-type Backend struct {
+type Client struct {
 	base string
 	http *http.Client
 }
 
-func newBackend() *Backend {
-	return &Backend{
-		base: strings.TrimSuffix(baseURL(), "/"),
+func New() *Client {
+	return &Client{
+		base: strings.TrimSuffix(browser.Origin(), "/"),
 		http: &http.Client{Timeout: 30 * time.Second},
 	}
 }
 
 // URL turns an API path into an absolute URL, for the places where the
 // browser has to fetch something itself (downloads, new tabs).
-func (b *Backend) URL(path string) string {
+func (b *Client) URL(path string) string {
 	return b.base + path
 }
 
-func (b *Backend) do(method, path string, body, out any) error {
+func (b *Client) do(method, path string, body, out any) error {
 	var reader io.Reader
 	if body != nil {
 		data, err := json.Marshal(body)
@@ -95,68 +99,68 @@ func apiError(body []byte, status int) string {
 	return fmt.Sprintf("HTTP %d", status)
 }
 
-func (b *Backend) get(path string, out any) error { return b.do(http.MethodGet, path, nil, out) }
-func (b *Backend) del(path string) error          { return b.do(http.MethodDelete, path, nil, nil) }
+func (b *Client) get(path string, out any) error { return b.do(http.MethodGet, path, nil, out) }
+func (b *Client) del(path string) error          { return b.do(http.MethodDelete, path, nil, nil) }
 
-func (b *Backend) post(path string, body, out any) error {
+func (b *Client) post(path string, body, out any) error {
 	return b.do(http.MethodPost, path, body, out)
 }
 
-func (b *Backend) put(path string, body, out any) error {
+func (b *Client) put(path string, body, out any) error {
 	return b.do(http.MethodPut, path, body, out)
 }
 
 // ── Endpoints ────────────────────────────────────────────────────────────────
 
-func (b *Backend) SystemStatus() (api.SystemStatus, error) {
+func (b *Client) SystemStatus() (api.SystemStatus, error) {
 	var out api.SystemStatus
 	return out, b.get(apiBase+"/system/status", &out)
 }
 
-func (b *Backend) RefreshIP() (string, error) {
+func (b *Client) RefreshIP() (string, error) {
 	var out api.PublicIP
 	err := b.get(apiBase+"/system/refresh-ip", &out)
 	return out.Address, err
 }
 
-func (b *Backend) Servers() ([]api.Server, error) {
+func (b *Client) Servers() ([]api.Server, error) {
 	var out []api.Server
 	return out, b.get(apiBase+"/servers", &out)
 }
 
-func (b *Backend) CreateServer(req api.CreateServerRequest) (api.Server, error) {
+func (b *Client) CreateServer(req api.CreateServerRequest) (api.Server, error) {
 	var out api.Server
 	return out, b.post(apiBase+"/servers", req, &out)
 }
 
-func (b *Backend) DeleteServer(id string) error { return b.del(apiBase + "/servers/" + id) }
+func (b *Client) DeleteServer(id string) error { return b.del(apiBase + "/servers/" + id) }
 
-func (b *Backend) StartServer(id string) error {
+func (b *Client) StartServer(id string) error {
 	return b.post(apiBase+"/servers/"+id+"/start", nil, nil)
 }
 
-func (b *Backend) StopServer(id string) error {
+func (b *Client) StopServer(id string) error {
 	return b.post(apiBase+"/servers/"+id+"/stop", nil, nil)
 }
 
-func (b *Backend) ServerInfo(id string) (api.ServerInfo, error) {
+func (b *Client) ServerInfo(id string) (api.ServerInfo, error) {
 	var out api.ServerInfo
 	return out, b.get(apiBase+"/servers/"+id+"/info", &out)
 }
 
-func (b *Backend) ServerConfig(id string) (api.ServerConfig, error) {
+func (b *Client) ServerConfig(id string) (api.ServerConfig, error) {
 	var out api.ServerConfig
 	return out, b.get(apiBase+"/servers/"+id+"/config", &out)
 }
 
-func (b *Backend) InterfaceTraffic() (map[string]api.InterfaceTraffic, error) {
+func (b *Client) InterfaceTraffic() (map[string]api.InterfaceTraffic, error) {
 	out := map[string]api.InterfaceTraffic{}
 	return out, b.get(apiBase+"/servers/traffic", &out)
 }
 
 // PeerTraffic returns the per-client counters of one server. A stopped
 // interface simply has no counters, which is not an error worth surfacing.
-func (b *Backend) PeerTraffic(serverID string) map[string]api.ClientTraffic {
+func (b *Client) PeerTraffic(serverID string) map[string]api.ClientTraffic {
 	out := map[string]api.ClientTraffic{}
 	if err := b.get(apiBase+"/servers/"+serverID+"/traffic", &out); err != nil {
 		return map[string]api.ClientTraffic{}
@@ -164,25 +168,25 @@ func (b *Backend) PeerTraffic(serverID string) map[string]api.ClientTraffic {
 	return out
 }
 
-func (b *Backend) Clients(serverID string) ([]api.Client, error) {
+func (b *Client) Clients(serverID string) ([]api.Client, error) {
 	var out []api.Client
 	return out, b.get(apiBase+"/servers/"+serverID+"/clients", &out)
 }
 
-func (b *Backend) AddClient(serverID string, req api.AddClientRequest) error {
+func (b *Client) AddClient(serverID string, req api.AddClientRequest) error {
 	return b.post(apiBase+"/servers/"+serverID+"/clients", req, nil)
 }
 
-func (b *Backend) DeleteClient(serverID, clientID string) error {
+func (b *Client) DeleteClient(serverID, clientID string) error {
 	return b.del(apiBase + "/servers/" + serverID + "/clients/" + clientID)
 }
 
-func (b *Backend) UpdateAllowedIPs(serverID, clientID, allowedIPs string) error {
+func (b *Client) UpdateAllowedIPs(serverID, clientID, allowedIPs string) error {
 	return b.put(apiBase+"/servers/"+serverID+"/clients/"+clientID+"/allowed-ips",
 		api.UpdateAllowedIPsRequest{AllowedIPs: allowedIPs}, nil)
 }
 
-func (b *Backend) UpdateISettings(serverID, clientID string, apply bool, settings api.ISettings) error {
+func (b *Client) UpdateISettings(serverID, clientID string, apply bool, settings api.ISettings) error {
 	if settings == nil {
 		settings = api.ISettings{}
 	}
@@ -191,7 +195,7 @@ func (b *Backend) UpdateISettings(serverID, clientID string, apply bool, setting
 }
 
 // UpdateSuspendTime sends an RFC 3339 timestamp, or null to clear it.
-func (b *Backend) UpdateSuspendTime(serverID, clientID string, at *time.Time) error {
+func (b *Client) UpdateSuspendTime(serverID, clientID string, at *time.Time) error {
 	var stamp *string
 	if at != nil {
 		value := at.Format(time.RFC3339)
@@ -201,22 +205,22 @@ func (b *Backend) UpdateSuspendTime(serverID, clientID string, at *time.Time) er
 		api.UpdateSuspendTimeRequest{SuspendAt: stamp}, nil)
 }
 
-func (b *Backend) SuspendClient(serverID, clientID string) error {
+func (b *Client) SuspendClient(serverID, clientID string) error {
 	return b.post(apiBase+"/servers/"+serverID+"/clients/"+clientID+"/suspend", nil, nil)
 }
 
-func (b *Backend) ActivateClient(serverID, clientID string) error {
+func (b *Client) ActivateClient(serverID, clientID string) error {
 	return b.post(apiBase+"/servers/"+serverID+"/clients/"+clientID+"/activate", nil, nil)
 }
 
-func (b *Backend) ClientConfigs(serverID, clientID string) (api.ClientConfigs, error) {
+func (b *Client) ClientConfigs(serverID, clientID string) (api.ClientConfigs, error) {
 	var out api.ClientConfigs
 	return out, b.get(apiBase+"/servers/"+serverID+"/clients/"+clientID+"/config-both", &out)
 }
 
 // AmneziaLink returns the native vpn:// link, or an empty string when the
 // backend cannot build one (the UI then just disables that view).
-func (b *Backend) AmneziaLink(serverID, clientID string) string {
+func (b *Client) AmneziaLink(serverID, clientID string) string {
 	var out api.AmneziaLink
 	if err := b.get(apiBase+"/servers/"+serverID+"/clients/"+clientID+"/link", &out); err != nil {
 		return ""
@@ -224,17 +228,17 @@ func (b *Backend) AmneziaLink(serverID, clientID string) string {
 	return out.VPNURL
 }
 
-func (b *Backend) DefaultISettings() (api.ISettings, error) {
+func (b *Client) DefaultISettings() (api.ISettings, error) {
 	out := api.ISettings{}
 	return out, b.get(apiBase+"/default-i-settings", &out)
 }
 
 // ClientConfigURL is the download endpoint for a client .conf file.
-func (b *Backend) ClientConfigURL(serverID, clientID string) string {
+func (b *Client) ClientConfigURL(serverID, clientID string) string {
 	return b.URL(apiBase + "/servers/" + url.PathEscape(serverID) + "/clients/" + url.PathEscape(clientID) + "/config")
 }
 
 // ServerConfigURL is the download endpoint for a server .conf file.
-func (b *Backend) ServerConfigURL(serverID string) string {
+func (b *Client) ServerConfigURL(serverID string) string {
 	return b.URL(apiBase + "/servers/" + url.PathEscape(serverID) + "/config/download")
 }
