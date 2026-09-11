@@ -2,7 +2,20 @@
 - Go 1.26
 - go-fiber 3
 
-Placement of backend files in `internal` directory.
+Backend packages live under `internal`, one responsibility each, with a
+one-way dependency graph `httpapi → manager → {store, awg, wgconf,
+amnezialink, publicip, config}`:
+
+- `httpapi` — REST handlers; no `os`/`exec`, everything goes through the
+  exported `manager` API and errors map to status codes in `fail`
+- `manager` — the state and the operations on it; the only package that
+  takes the config lock. Split by file (`servers.go`, `clients.go`,
+  `suspend.go`, `status.go`, `traffic.go`, `system.go`)
+- `awg` — the only package that shells out, behind the `Runner` interface;
+  tests use `awg/awgtest` instead of the host
+- `wgconf` — `.conf` text: rendering, peer markers, suspended blocks
+- `amnezialink` — `vpn://` export; `store` — `web_config.json` and schema
+  migrations; `config` — env → `Settings`; `frontend` — static assets
 
 ## Frontend
 - Fyne v2.8 compiled to WebAssembly (GOOS=js GOARCH=wasm)
