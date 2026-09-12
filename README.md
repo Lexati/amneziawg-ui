@@ -1,25 +1,76 @@
-# AmneziaWG Web UI
+# AmneziaWG Web UI — веб-панель управления VPN на AmneziaWG 3.1 в Docker
 
-Самостоятельно размещаемая веб-панель управления **AmneziaWG 3.1** — обфусцированным,
-устойчивым к DPI форком WireGuard.
+[![Docker Image Size](https://img.shields.io/docker/image-size/myceliummesh/amneziawg-ui/latest?label=docker%20image)](https://hub.docker.com/r/myceliummesh/amneziawg-ui)
+[![Docker Pulls](https://img.shields.io/docker/pulls/myceliummesh/amneziawg-ui)](https://hub.docker.com/r/myceliummesh/amneziawg-ui)
+[![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](go.mod)
+[![AmneziaWG](https://img.shields.io/badge/AmneziaWG-3.1-blue)](DOCS.md#-amneziawg-31--главное)
 
-Один Go-бинарник и три бинарника AmneziaWG в Alpine-образе размером всего
-**~23 МБ** (для сравнения, [amnezia-wg-easy](https://github.com/w0rng/amnezia-wg-easy)
-весит ~80 МБ): ни интерпретаторов, ни nginx, ни supervisor. Создавайте несколько
-серверов, управляйте клиентами и
-следите за трафиком из веб-интерфейса, где **AmneziaWG 3.1 (header protection +
-random trailers) — встроенный и всегда включённый режим обфускации**.
+**AmneziaWG Web UI** — самостоятельно размещаемый (self-hosted) веб-интерфейс
+для **AmneziaWG** — обфусцированного форка **WireGuard**, который обходит
+DPI-блокировки VPN. Одна команда `docker compose up -d` — и у вас
+собственный VPN-сервер с панелью управления: создавайте несколько серверов
+AmneziaWG, добавляйте клиентов, выдавайте конфиги как файл `.conf`, QR-код
+или ссылку `vpn://` для приложения **AmneziaVPN**, следите за трафиком и
+подключениями в браузере.
+
+Это лёгкая альтернатива `amnezia-wg-easy` и `wg-easy`: один Go-бинарник и
+три бинарника AmneziaWG в Alpine-образе размером всего **~23 МБ** (у
+[amnezia-wg-easy](https://github.com/w0rng/amnezia-wg-easy) — ~80 МБ) — без
+Node.js, nginx и supervisor. **AmneziaWG 3.1 (header protection + random
+trailers) — встроенный и всегда включённый режим обфускации**, ничего
+настраивать руками не нужно.
+
+> **AmneziaWG Web UI** is a self-hosted web panel for AmneziaWG — the
+> DPI-resistant, obfuscated WireGuard fork. A single ~23 MB Docker image
+> (Go + Alpine) to create VPN servers, manage clients, export `.conf`, QR
+> codes and AmneziaVPN `vpn://` links, and watch traffic — with AmneziaWG 3.1
+> obfuscation (header protection, random trailers) always on. The UI is in
+> English and Russian; the documentation is in Russian.
 
 <p align="center">
-  <img src="screenshot2.png" alt="Список серверов: два сервера AmneziaWG со своими клиентами" width="92%"/>
+  <img src="screenshot2.png" alt="AmneziaWG Web UI: список VPN-серверов AmneziaWG с клиентами, трафиком и статусом подключения" width="92%"/>
 </p>
 <p align="center">
-  <img src="screenshot.png" alt="Форма создания VPN-сервера с параметрами обфускации AmneziaWG 3.1" width="62%"/>
+  <img src="screenshot.png" alt="Создание VPN-сервера AmneziaWG 3.1 в веб-панели: параметры обфускации Jc, Jmin, Jmax, S1-S4, H1-H4, HeaderProtectionKey" width="62%"/>
 </p>
 
-## Быстрый старт
+## Содержание
 
-Положите на VPS `docker-compose.yml`:
+- [Возможности](#возможности)
+- [Быстрый старт: AmneziaWG в Docker за одну минуту](#быстрый-старт-amneziawg-в-docker-за-одну-минуту)
+- [Переменные окружения](#переменные-окружения)
+- [Сравнение с amnezia-wg-easy и wg-easy](#сравнение-с-amnezia-wg-easy-и-wg-easy)
+- [Частые вопросы (FAQ)](#частые-вопросы-faq)
+- [Документация](#документация)
+- [Список изменений](#список-изменений)
+
+## Возможности
+
+- **Несколько VPN-серверов AmneziaWG** на одном хосте, у каждого свой порт,
+  подсеть, MTU, DNS, endpoint и параметры обфускации
+- **AmneziaWG 3.1 по умолчанию**: защита заголовков (header protection),
+  random trailers, отключённые cookies, мусорные пакеты (junk packets) и
+  паддинг — `HeaderProtectionKey` и все параметры генерируются автоматически
+  и синхронизируются с каждым клиентским конфигом
+- **Управление клиентами**: добавление, редактирование, удаление,
+  приостановка и повторная активация клиента без перезапуска сервера,
+  автоматическая приостановка по расписанию
+- **Экспорт конфига клиента** тремя способами: файл `.conf`, **QR-код** для
+  мобильных приложений и нативная ссылка **`vpn://`** для AmneziaVPN
+- **Мониторинг в реальном времени**: трафик, последнее рукопожатие и endpoint
+  каждого клиента, статус сервера — обновляются автоматически
+- **REST API** для автоматизации: всё, что делает веб-интерфейс, доступно
+  через HTTP-эндпоинты за basic auth
+- **Автозапуск серверов** после перезапуска контейнера, **автоматическая
+  настройка iptables**, поддержка IPv4 и IPv6
+- **Интерфейс на русском и английском** — язык берётся из настроек браузера
+- **Минимальный образ**: Go + Alpine, ~23 МБ, без интерпретаторов и лишних
+  сервисов
+
+## Быстрый старт: AmneziaWG в Docker за одну минуту
+
+Понадобится VPS с Linux и установленным Docker. Положите на сервер
+`docker-compose.yml`:
 
 ```yaml
 services:
@@ -70,7 +121,12 @@ docker compose up -d
 > ```sh
 > printf 'ваш-пароль' | openssl dgst -binary -sha256 | base64
 > ```
-> HTTPS контейнер не создает — если нужен HTTPS поставьте перед ним свой reverse proxy (nginx, Caddy, Traefik).
+> HTTPS контейнер не создаёт — если нужен HTTPS, поставьте перед ним свой
+> reverse proxy (nginx, Caddy, Traefik).
+
+Дальше — в браузере: **Create server** → сервер AmneziaWG поднят →
+**Add client** → скачайте `.conf`, отсканируйте QR-код или скопируйте
+ссылку `vpn://` в приложение AmneziaVPN.
 
 ## Переменные окружения
 
@@ -93,13 +149,58 @@ docker compose up -d
 Всё состояние — конфиги серверов и `web_config.json` — лежит в томе
 `/etc/amnezia`. Забэкапьте этот том, и панель переедет на другую машину как есть.
 
+## Частые вопросы (FAQ)
+
+### Чем AmneziaWG отличается от WireGuard?
+
+AmneziaWG — форк WireGuard с обфускацией трафика: мусорные пакеты, паддинг и
+изменённые заголовки не дают DPI опознать протокол. AmneziaWG 3.0 добавил
+**header protection** — шифрование самого заголовка пакета WireGuard, а 3.1 —
+**random trailers** и отключение cookie-обмена. Скорость и криптография те же,
+что у WireGuard. Подробнее — в [DOCS.md](DOCS.md#-amneziawg-31--главное).
+
+### Какие клиенты подключатся к серверу AmneziaWG 3.1?
+
+Официальное приложение **AmneziaVPN 5.0.1.5 и новее** для Windows, macOS,
+Linux, Android и iOS — скопируйте в него ссылку `vpn://` или отсканируйте
+QR-код. Для более старых клиентов снимите в форме сервера галочки
+`RandomTrailers` и `DisableCookies` — остальные параметры AmneziaWG 3.x с ними
+совместимы.
+
+### Как поменять пароль от веб-панели?
+
+Пароль хранится в `WEB_UI_PASSWORD` как base64 от SHA-256. Посчитайте новое
+значение командой `printf 'ваш-пароль' | openssl dgst -binary -sha256 | base64`,
+подставьте в `docker-compose.yml` и перезапустите контейнер.
+
+### Как сделать бэкап и перенести VPN на другой сервер?
+
+Всё состояние лежит в томе `/etc/amnezia`: `web_config.json` и `.conf`
+каждого сервера. Скопируйте его (`docker cp <контейнер>:/etc/amnezia ./backup/`),
+разверните том на новой машине и запустите контейнер — серверы и клиенты
+поднимутся как были.
+
+### Нужен ли HTTPS и как его включить?
+
+Панель отдаёт HTTP с basic auth. Для доступа из интернета поставьте перед
+ней reverse proxy с TLS (Caddy, nginx, Traefik) или ограничьте порт
+`54845` файрволом.
+
 ## Документация
 
-Полное описание — REST API, параметры обфускации AmneziaWG 3.1, архитектура,
-сборка из исходников, профилирование, резервное копирование и отладка:
+Полное описание — REST API, справочник параметров обфускации AmneziaWG 3.1
+(`Jc`, `Jmin`, `Jmax`, `S1`–`S4`, `H1`–`H4`, `HeaderProtectionKey`,
+`RandomTrailers`, `DisableCookies`, `I1`–`I5`), архитектура, сборка из
+исходников, профилирование, резервное копирование и отладка:
 
 **[DOCS.md](DOCS.md)**
 
 ## Список изменений
 
 **[CHANGELOG.md](CHANGELOG.md)**
+
+---
+
+*Ключевые слова: AmneziaWG, AmneziaWG 3.1, Amnezia VPN, WireGuard, обход DPI,
+обход блокировок VPN, self-hosted VPN, веб-панель WireGuard, VPN в Docker,
+docker compose VPN, amnezia-wg-easy, wg-easy, Go, Fiber, Fyne, WebAssembly.*
