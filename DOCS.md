@@ -559,7 +559,7 @@ AmneziaWG 3.x. В UI это третья вкладка в модальном о
 те же учётные данные, что и API.
 
 ```bash
-# docker compose: добавьте переменную в .env (или -e WEB_UI_PPROF=1 в docker run)
+# docker compose: добавьте переменную в .env (или в environment сервиса)
 echo 'WEB_UI_PPROF=1' >> .env && docker compose up -d
 ```
 
@@ -655,23 +655,26 @@ docker build --build-arg AWG_GO_VERSION=vX.Y.Z --build-arg AWG_TOOLS_VERSION=vX.
 используйте только базовый файл: `docker compose -f docker-compose.yml up -d`.
 Базовый файл читает порты и настройки из `.env`; если переменных там нет,
 подставляются те же значения по умолчанию, что и в образе — `54845/tcp` для
-веб-интерфейса и `54844/udp` для VPN. Минимальный
-самостоятельный пример со сборкой на месте:
+веб-интерфейса и `54844/udp` для VPN.
+
+Самостоятельный `docker-compose.yml` для VPS с готовым образом из Docker Hub
+(тот же, что в README):
 
 ```yaml
 services:
   app:
-    build: .
+    image: myceliummesh/amneziawg-ui:latest
     restart: unless-stopped
     ports:
-      - "8080:8080/tcp"
-      - "54844:54844/udp"
+      - "54845:54845/tcp"   # веб-интерфейс
+      - "54844:54844/udp"   # VPN (Можно задать диапазон)
     environment:
-      - WEB_UI_PORT=8080
-      - AUTO_START_SERVERS=true
-      - DEFAULT_MTU=1280
+      - WEB_UI_USER=admin
+      # base64(sha256(пароль)); значение ниже — это "changeme", замените:
+      # printf 'ваш-пароль' | openssl dgst -binary -sha256 | base64
+      - WEB_UI_PASSWORD=BXugPWxEEEhj3HNh/kV4ll0YhzYPkKCJWILlimJI/IY=
     volumes:
-      - amnezia-data:/etc/amnezia
+      - data:/etc/amnezia
     cap_add:
       - NET_ADMIN
       - SYS_MODULE
@@ -683,33 +686,22 @@ services:
       - net.ipv6.conf.all.disable_ipv6=0
       - net.ipv6.conf.all.forwarding=1
       - net.ipv6.conf.default.forwarding=1
+    logging:
+      options:
+        max-size: 10m
+        max-file: 3
+
 volumes:
-  amnezia-data:
+  data:
 ```
 
-### Пример docker run
-
-```bash
-docker run -d \
-  --name amnezia-web-ui \
-  --cap-add=NET_ADMIN \
-  --cap-add SYS_MODULE \
-  --sysctl net.ipv4.ip_forward=1 \
-  --sysctl net.ipv4.conf.all.src_valid_mark=1 \
-  --device /dev/net/tun \
-  --restart unless-stopped \
-  -p 9090:9090 \
-  -p 51821:51821/udp \
-  -e WEB_UI_PORT=9090 \
-  -e WEB_UI_PASSWORD=1234 \
-  -e AUTO_START_SERVERS=false \
-  -e DEFAULT_MTU=1420 \
-  -e DEFAULT_SUBNET=10.8.0.0/24 \
-  -e DEFAULT_PORT=51821 \
-  -e DEFAULT_DNS="8.8.8.8,8.8.4.4" \
-  -v amnezia-data:/etc/amnezia \
-  <ваш-образ>:latest
+```sh
+docker compose up -d
 ```
+
+Другие порты и настройки по умолчанию задаются через `environment` теми же
+переменными из таблицы выше; при смене `WEB_UI_PORT` или `DEFAULT_PORT` не
+забудьте поправить и `ports`.
 
 Если нужен HTTPS, поставьте перед контейнером собственный reverse proxy с
 терминацией TLS (nginx, Caddy, Traefik и т. п.) и проксируйте на `WEB_UI_PORT`.
@@ -947,5 +939,3 @@ basic-аутентификацией, встроенной в само прил�
 
 Поддержка НЕ предоставляется, регулярные обновления не планируются.
 Найденные проблемы могут быть исправлены, если позволит свободное время.
-
-From Russia with L❤️VE
