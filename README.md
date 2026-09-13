@@ -1,14 +1,14 @@
-# AmneziaWG Web UI — веб-панель управления VPN на AmneziaWG 3.1 в Docker
+# AmneziaWG Web UI — веб-панель (админка) для VPN на AmneziaWG 3.1 в Docker
 
 [![Docker Image Size](https://img.shields.io/docker/image-size/myceliummesh/amneziawg-ui/latest?label=docker%20image)](https://hub.docker.com/r/myceliummesh/amneziawg-ui)
 [![Docker Pulls](https://img.shields.io/docker/pulls/myceliummesh/amneziawg-ui)](https://hub.docker.com/r/myceliummesh/amneziawg-ui)
 [![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](go.mod)
 [![AmneziaWG](https://img.shields.io/badge/AmneziaWG-3.1-blue)](DOCS.md#-amneziawg-31--главное)
 
-**AmneziaWG Web UI** — самостоятельно размещаемый (self-hosted) веб-интерфейс
+**AmneziaWG Web UI** — самостоятельно размещаемая (self-hosted) админ-панель
 для **AmneziaWG** — обфусцированного форка **WireGuard**, который обходит
 DPI-блокировки VPN. Одна команда `docker compose up -d` — и у вас
-собственный VPN-сервер с панелью управления: создавайте несколько серверов
+собственный VPN-сервер с админкой в браузере: создавайте несколько серверов
 AmneziaWG, добавляйте клиентов, выдавайте конфиги как файл `.conf`, QR-код
 или ссылку `vpn://` для приложения **AmneziaVPN**, следите за трафиком и
 подключениями в браузере.
@@ -20,18 +20,18 @@ Node.js, nginx и supervisor. **AmneziaWG 3.1 (header protection + random
 trailers) — встроенный и всегда включённый режим обфускации**, ничего
 настраивать руками не нужно.
 
-> **AmneziaWG Web UI** is a self-hosted web panel for AmneziaWG — the
-> DPI-resistant, obfuscated WireGuard fork. A single ~23 MB Docker image
+> **AmneziaWG Web UI** is a self-hosted admin panel (web UI) for AmneziaWG —
+> the DPI-resistant, obfuscated WireGuard fork. A single ~23 MB Docker image
 > (Go + Alpine) to create VPN servers, manage clients, export `.conf`, QR
 > codes and AmneziaVPN `vpn://` links, and watch traffic — with AmneziaWG 3.1
 > obfuscation (header protection, random trailers) always on. The UI is in
 > English and Russian; the documentation is in Russian.
 
 <p align="center">
-  <img src="screenshot2.png" alt="AmneziaWG Web UI: список VPN-серверов AmneziaWG с клиентами, трафиком и статусом подключения" width="92%"/>
+  <img src="screenshot2.png" alt="Админ-панель AmneziaWG Web UI: список VPN-серверов AmneziaWG с клиентами, трафиком и статусом подключения"/>
 </p>
 <p align="center">
-  <img src="screenshot.png" alt="Создание VPN-сервера AmneziaWG 3.1 в веб-панели: параметры обфускации Jc, Jmin, Jmax, S1-S4, H1-H4, HeaderProtectionKey" width="62%"/>
+  <img src="screenshot.png" alt="Создание VPN-сервера AmneziaWG 3.1 в веб-панели: параметры обфускации Jc, Jmin, Jmax, S1-S4, H1-H4, HeaderProtectionKey"/>
 </p>
 
 ## Содержание
@@ -39,7 +39,6 @@ trailers) — встроенный и всегда включённый режи
 - [Возможности](#возможности)
 - [Быстрый старт: AmneziaWG в Docker за одну минуту](#быстрый-старт-amneziawg-в-docker-за-одну-минуту)
 - [Переменные окружения](#переменные-окружения)
-- [Сравнение с amnezia-wg-easy и wg-easy](#сравнение-с-amnezia-wg-easy-и-wg-easy)
 - [Частые вопросы (FAQ)](#частые-вопросы-faq)
 - [Документация](#документация)
 - [Список изменений](#список-изменений)
@@ -113,7 +112,7 @@ volumes:
 docker compose up -d
 ```
 
-Веб-интерфейс — на `http://<ваш-сервер>:54845`, логин `admin`, пароль
+Админ-панель — на `http://<ваш-сервер>:54845`, логин `admin`, пароль
 `changeme`. Смените его до того, как откроете порт наружу.
 
 > [!IMPORTANT]
@@ -168,7 +167,7 @@ QR-код. Для более старых клиентов снимите в ф�
 `RandomTrailers` и `DisableCookies` — остальные параметры AmneziaWG 3.x с ними
 совместимы.
 
-### Как поменять пароль от веб-панели?
+### Как поменять пароль от админ-панели?
 
 Пароль хранится в `WEB_UI_PASSWORD` как base64 от SHA-256. Посчитайте новое
 значение командой `printf 'ваш-пароль' | openssl dgst -binary -sha256 | base64`,
@@ -207,5 +206,7 @@ QR-код. Для более старых клиентов снимите в ф�
 ---
 
 *Ключевые слова: AmneziaWG, AmneziaWG 3.1, Amnezia VPN, WireGuard, обход DPI,
-обход блокировок VPN, self-hosted VPN, веб-панель WireGuard, VPN в Docker,
-docker compose VPN, amnezia-wg-easy, wg-easy, Go, Fiber, Fyne, WebAssembly.*
+обход блокировок VPN, self-hosted VPN, веб-панель AmneziaWG, админка AmneziaWG,
+админ-панель WireGuard, AmneziaWG admin panel, AmneziaWG panel, WireGuard web
+UI, VPN в Docker, docker compose VPN, amnezia-wg-easy, wg-easy, Go, Fiber,
+Fyne, WebAssembly.*
