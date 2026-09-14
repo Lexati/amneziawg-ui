@@ -13,10 +13,10 @@ Go/Fiber: создавайте несколько серверов AmneziaWG, у
 и каждого сервера через UI или API, кроме `WEB_UI_PORT`.
 
 <p align="center">
-  <img src="screenshot2.png" alt="Список серверов: два сервера AmneziaWG со своими клиентами" width="92%"/>
+  <img src="screenshot2.png" alt="Панель мониторинга и список серверов: два сервера AmneziaWG со своими клиентами"/>
 </p>
 <p align="center">
-  <img src="screenshot.png" alt="Форма создания VPN-сервера с параметрами обфускации AmneziaWG 3.1" width="62%"/>
+  <img src="screenshot.png" alt="Конфигурация клиента: QR-код, текст .conf с параметрами обфускации AmneziaWG 3.1 и ссылка vpn://"/>
 </p>
 
 ## 🔒 AmneziaWG 3.1 — главное

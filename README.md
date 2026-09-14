@@ -5,6 +5,7 @@
 [![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](go.mod)
 [![AmneziaWG](https://img.shields.io/badge/AmneziaWG-3.1-blue)](DOCS.md#-amneziawg-31--главное)
 
+
 **AmneziaWG Web UI** — самостоятельно размещаемая (self-hosted) админ-панель
 для **AmneziaWG** — обфусцированного форка **WireGuard**, который обходит
 DPI-блокировки VPN. Одна команда `docker compose up -d` — и у вас
@@ -20,19 +21,19 @@ Node.js, nginx и supervisor. **AmneziaWG 3.1 (header protection + random
 trailers) — встроенный и всегда включённый режим обфускации**, ничего
 настраивать руками не нужно.
 
+<p align="center">
+  <img src="screenshot2.png" alt="Админ-панель AmneziaWG Web UI: графики трафика VPN, CPU, RAM и диска за 5 минут, список VPN-серверов AmneziaWG с клиентами, трафиком и статусом подключения"/>
+</p>
+<p align="center">
+  <img src="screenshot.png" alt="Конфигурация клиента AmneziaWG: QR-код для приложения AmneziaWG / AmneziaVPN, текст .conf с параметрами обфускации Jc, Jmin, Jmax, S1-S4, H1-H4, HeaderProtectionKey, ссылка vpn://"/>
+</p>
+
 > **AmneziaWG Web UI** is a self-hosted admin panel (web UI) for AmneziaWG —
 > the DPI-resistant, obfuscated WireGuard fork. A single ~23 MB Docker image
 > (Go + Alpine) to create VPN servers, manage clients, export `.conf`, QR
 > codes and AmneziaVPN `vpn://` links, and watch traffic — with AmneziaWG 3.1
 > obfuscation (header protection, random trailers) always on. The UI is in
 > English and Russian; the documentation is in Russian.
-
-<p align="center">
-  <img src="screenshot2.png" alt="Админ-панель AmneziaWG Web UI: список VPN-серверов AmneziaWG с клиентами, трафиком и статусом подключения"/>
-</p>
-<p align="center">
-  <img src="screenshot.png" alt="Создание VPN-сервера AmneziaWG 3.1 в веб-панели: параметры обфускации Jc, Jmin, Jmax, S1-S4, H1-H4, HeaderProtectionKey"/>
-</p>
 
 ## Содержание
 
