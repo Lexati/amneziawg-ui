@@ -11,4 +11,5 @@ import "fyne.io/fyne/v2"
 func Install(a fyne.App) {
 	installNonASCIIKeyboard()
 	installClipboard(a)
+	installVisibilityRepaint(a)
 }
