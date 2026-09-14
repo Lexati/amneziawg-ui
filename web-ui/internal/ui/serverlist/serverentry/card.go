@@ -30,6 +30,7 @@ type Card struct {
 
 	rx      *canvas.Text
 	tx      *canvas.Text
+	uptime  *canvas.Text
 	clients *clientlist.List
 
 	object fyne.CanvasObject
@@ -60,13 +61,16 @@ func New(e *env.Env, srv api.Server) *Card {
 	}
 
 	// The interface counters carry the same glyphs as the client rows and
-	// the dashboard tiles: download for received, upload for sent.
+	// the dashboard tiles: download for received, upload for sent. The
+	// uptime follows them and stays empty while the interface is down.
 	c.rx = widgets.SmallText("—", style.Muted)
 	c.tx = widgets.SmallText("—", style.Muted)
+	c.uptime = widgets.SmallText("", style.Muted)
 	iface := container.NewHBox(
 		widgets.SmallText(lang.L("Interface")+":", style.Muted),
 		container.NewCenter(widgets.SmallIcon(theme.DownloadIcon())), c.rx,
 		container.NewCenter(widgets.SmallIcon(theme.UploadIcon())), c.tx,
+		c.uptime,
 	)
 
 	remove := widgets.NewButton("", theme.DeleteIcon(), c.confirmDelete)
@@ -122,17 +126,29 @@ func (c *Card) CanvasObject() fyne.CanvasObject {
 	return c.object
 }
 
-// ApplyInterfaceTraffic updates the RX/TX counters of the interface; ok is
-// false for a server whose interface is down. Must run on the UI goroutine.
+// ApplyInterfaceTraffic updates the RX/TX counters and the uptime of the
+// interface; ok is false for a server whose interface is down. Must run on
+// the UI goroutine.
 func (c *Card) ApplyInterfaceTraffic(traffic api.InterfaceTraffic, ok bool) {
-	rx, tx := "—", "—"
+	rx, tx, uptime := "—", "—", 0.0
 	if ok {
-		rx, tx = traffic.RX, traffic.TX
+		rx, tx, uptime = traffic.RX, traffic.TX, traffic.UptimeSeconds
 	}
 	c.rx.Text = rx
 	c.rx.Refresh()
 	c.tx.Text = tx
 	c.tx.Refresh()
+	c.uptime.Text = uptimeText(uptime)
+	c.uptime.Refresh()
+}
+
+// uptimeText is the trailing uptime of the counter line; empty while the
+// uptime is zero, which is a down interface or one not polled yet.
+func uptimeText(uptime float64) string {
+	if uptime <= 0 {
+		return ""
+	}
+	return "·  " + lang.L("up {{.Uptime}}", map[string]any{"Uptime": widgets.Uptime(uptime)})
 }
 
 // ApplyPeerTraffic hands the per-client snapshot down to the rows. Must run

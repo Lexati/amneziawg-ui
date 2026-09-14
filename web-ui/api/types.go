@@ -162,6 +162,9 @@ type InterfaceTraffic struct {
 	TX      string `json:"tx"`
 	RXBytes uint64 `json:"rx_bytes"`
 	TXBytes uint64 `json:"tx_bytes"`
+	// UptimeSeconds is how long the interface has been up, as far as the
+	// backend has seen it.
+	UptimeSeconds float64 `json:"uptime_seconds"`
 }
 
 // ISettings are the optional I1-I5 signature packets, keyed "i1".."i5".
@@ -263,11 +266,13 @@ type PublicIP struct {
 
 // SystemStatus is the payload of GET /api/system/status.
 type SystemStatus struct {
-	AWGAvailable  bool              `json:"awg_available"`
-	PublicIP      string            `json:"public_ip"`
-	TotalServers  int               `json:"total_servers"`
-	TotalClients  int               `json:"total_clients"`
-	ActiveServers int               `json:"active_servers"`
+	AWGAvailable  bool   `json:"awg_available"`
+	PublicIP      string `json:"public_ip"`
+	TotalServers  int    `json:"total_servers"`
+	TotalClients  int    `json:"total_clients"`
+	ActiveServers int    `json:"active_servers"`
+	// UptimeSeconds is how long the backend process has been running.
+	UptimeSeconds float64           `json:"uptime_seconds"`
 	Timestamp     float64           `json:"timestamp"`
 	Environment   SystemEnvironment `json:"environment"`
 }

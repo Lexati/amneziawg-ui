@@ -18,15 +18,16 @@ test('client config dialog shows the AmneziaVPN link and the .conf QR code', asy
   expect(download.ok()).toBeTruthy();
   expect(await download.text()).toContain('Jc =');
 
-  // "QR / config" on the client row.
+  // "QR / config" on the client row. The dialog opens on the .conf tab,
+  // which is the one that gets a QR code.
   await click(page, 1240, 340);
   await page.waitForTimeout(2500);
-  await page.screenshot({ path: 'shots/08-qr-link.png' });
+  await page.screenshot({ path: 'shots/08-qr-conf.png' });
 
-  // Switch to the .conf view, which is the one that gets a QR code.
-  await click(page, 470, 204);
+  // Switch to the AmneziaVPN link tab.
+  await click(page, 407, 205);
   await page.waitForTimeout(1500);
-  await page.screenshot({ path: 'shots/09-qr-conf.png' });
+  await page.screenshot({ path: 'shots/09-qr-link.png' });
 
   // Close, then open the server configuration dialog.
   await click(page, 749, 800);

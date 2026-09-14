@@ -8,6 +8,7 @@ package manager
 import (
 	"fmt"
 	"sync"
+	"time"
 
 	"amneziawg-web-ui/internal/awg"
 	"amneziawg-web-ui/internal/config"
@@ -22,6 +23,10 @@ type Manager struct {
 	store    *store.Store
 	tools    *awg.Tools
 	host     sysinfo.Host
+
+	// started is when this process came up; the panel's uptime counts
+	// from it.
+	started time.Time
 
 	// cfg is the live config. Every read and write goes through mu; nothing
 	// handed out of this package points into it.
@@ -49,6 +54,7 @@ func New(settings config.Settings, st *store.Store, tools *awg.Tools) *Manager {
 		store:    st,
 		tools:    tools,
 		host:     sysinfo.Default(settings.WireguardConfigDir),
+		started:  time.Now(),
 		statuses: map[string]statusObservation{},
 	}
 

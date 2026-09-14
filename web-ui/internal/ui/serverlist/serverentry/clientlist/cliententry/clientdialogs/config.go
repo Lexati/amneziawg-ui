@@ -29,6 +29,7 @@ const qrCapacity = 2000
 // configView is one of the representations a client config has.
 type configView struct {
 	label string
+	icon  fyne.Resource
 	text  string
 	note  string
 	// qr marks the views worth rendering as a QR code. The AmneziaVPN link
@@ -52,112 +53,31 @@ func ShowConfig(e *env.Env, server api.Server, client api.Client) {
 }
 
 func presentConfig(e *env.Env, server api.Server, client api.Client, configs api.ClientConfigs, link string) {
-	views := []configView{}
+	views := []configView{{
+		label: ".conf",
+		icon:  theme.DocumentIcon(),
+		text:  configs.CleanConfig,
+		note:  lang.L("Scan with the AmneziaWG / AmneziaVPN app"),
+		qr:    true,
+	}}
 	if link != "" {
 		// Importing a plain .conf makes the official Amnezia app tag the
 		// server as the legacy "amnezia-awg" container (AmneziaWG 2.0, no
 		// header protection). The native link carries the container and
 		// protocol_version fields that make it recognise AWG 3.x, so it is
-		// the recommended - and default - view.
+		// the view to point Amnezia users at.
 		views = append(views, configView{
 			label: lang.L("AmneziaVPN link"),
+			icon:  theme.MailForwardIcon(),
 			text:  link,
 			note:  lang.L("Copy this link into the AmneziaVPN app - it is recognised as AmneziaWG 3.x"),
 		})
 	}
-	views = append(views, configView{
-		label: ".conf",
-		text:  configs.CleanConfig,
-		note:  lang.L("Scan with the AmneziaWG / AmneziaVPN app"),
-		qr:    true,
-	})
 
-	qrImage := canvas.NewImageFromResource(nil)
-	qrImage.FillMode = canvas.ImageFillContain
-	qrImage.SetMinSize(fyne.NewSize(280, 280))
-
-	qrNote := widgets.SmallText("", style.Muted)
-	warning := widget.NewLabel("")
-	warning.Wrapping = fyne.TextWrapWord
-	warning.Importance = widget.WarningImportance
-	warning.Hide()
-
-	text, setText := widgets.MonospaceView("")
-	text.SetMinRowsVisible(12)
-	length := widgets.SmallText("", style.Muted)
-
-	current := views[0]
-	var qrPNG []byte
-
-	copyButton := widgets.NewButton(lang.L("Copy"), theme.ContentCopyIcon(), func() {
-		dialogs.Copy(e.Notify, current.text)
-	})
-	saveQR := widgets.NewButton(lang.L("Save QR image"), theme.DownloadIcon(), func() {
-		if qrPNG == nil {
-			return
-		}
-		browser.SaveBytes(safeFileName(client.Name)+"_qr.png", "image/png", qrPNG)
-	})
-
-	// The QR column disappears for views that have no QR code, so the text
-	// takes the full width instead of leaving a hole. The hint stays with
-	// the text, which is the part that is always on screen.
-	left := container.NewVBox(
-		container.NewCenter(qrImage),
-		container.NewCenter(saveQR),
-	)
-
-	render := func(view configView) {
-		current = view
-		setText(view.text)
-		length.Text = lang.N("{{.Count}} characters", len(view.text), map[string]any{"Count": len(view.text)})
-		length.Refresh()
-
-		qrPNG = nil
-		qrNote.Text = view.note
-
-		if !view.qr {
-			left.Hide()
-			warning.Hide()
-			qrNote.Refresh()
-			return
-		}
-
-		left.Show()
-		qrImage.Show()
-		saveQR.Show()
-		png, err := encodeQR(view.text)
-		switch {
-		case err != nil:
-			qrImage.Hide()
-			saveQR.Hide()
-			qrNote.Text = ""
-			warning.SetText(err.Error())
-			warning.Show()
-		default:
-			qrPNG = png
-			qrImage.Resource = fyne.NewStaticResource("qr.png", png)
-			qrImage.Show()
-			qrImage.Refresh()
-			warning.Hide()
-		}
-		qrNote.Refresh()
-	}
-
-	labels := make([]string, 0, len(views))
-	byLabel := map[string]configView{}
+	tabs := container.NewAppTabs()
 	for _, view := range views {
-		labels = append(labels, view.label)
-		byLabel[view.label] = view
+		tabs.Append(container.NewTabItemWithIcon(view.label, view.icon, viewPage(e, client, view)))
 	}
-
-	tabs := widget.NewRadioGroup(labels, func(selected string) {
-		if view, ok := byLabel[selected]; ok {
-			render(view)
-		}
-	})
-	tabs.Horizontal = true
-	tabs.SetSelected(views[0].label)
 
 	download := widgets.NewButton(lang.L("Download .conf"), theme.DownloadIcon(), func() {
 		browser.OpenURL(e.Backend.ClientConfigURL(server.ID, client.ID))
@@ -173,24 +93,58 @@ func presentConfig(e *env.Env, server api.Server, client api.Client, configs api
 		suspend = configs.SuspendAtReadable
 	}
 
-	right := container.NewBorder(
-		container.NewVBox(tabs, qrNote, warning),
-		container.NewVBox(
-			container.NewBorder(nil, nil, length, copyButton),
-		), nil, nil, text)
-
 	meta := container.NewHBox(
 		widgets.SmallText(lang.L("Created: {{.When}}", map[string]any{"When": created}), style.Muted),
 		widgets.SmallText("·", style.Border),
 		widgets.SmallText(lang.L("Auto-suspend: {{.When}}", map[string]any{"When": suspend}), style.Muted),
 	)
 
-	body := container.NewBorder(meta, container.NewHBox(download), left, nil, right)
+	body := container.NewBorder(meta, container.NewHBox(download), nil, nil, tabs)
 
 	dialogs.Show(e.Win, lang.L("Client configuration: {{.Name}}", map[string]any{"Name": client.Name}),
 		lang.L("Close"), body, dialogs.Size(e.Win, 960, 720))
+}
 
-	render(current)
+// viewPage is one tab: the text with its hint, length and copy button, and
+// for the views that have one, the QR code alongside. A view without a QR
+// code has no left column at all, so the text takes the full width instead
+// of leaving a hole.
+func viewPage(e *env.Env, client api.Client, view configView) fyne.CanvasObject {
+	text, _ := widgets.MonospaceView(view.text)
+	text.SetMinRowsVisible(12)
+
+	length := widgets.SmallText(lang.N("{{.Count}} characters", len(view.text), map[string]any{"Count": len(view.text)}), style.Muted)
+	copyButton := widgets.NewButton(lang.L("Copy"), theme.ContentCopyIcon(), func() {
+		dialogs.Copy(e.Notify, view.text)
+	})
+
+	note := widgets.SmallText(view.note, style.Muted)
+	head := container.NewVBox(note)
+
+	page := container.NewBorder(head, container.NewBorder(nil, nil, length, copyButton), nil, nil, text)
+	if !view.qr {
+		return page
+	}
+
+	png, err := encodeQR(view.text)
+	if err != nil {
+		note.Text = ""
+		warning := widget.NewLabel(err.Error())
+		warning.Wrapping = fyne.TextWrapWord
+		warning.Importance = widget.WarningImportance
+		head.Add(warning)
+		return page
+	}
+
+	qrImage := canvas.NewImageFromResource(fyne.NewStaticResource("qr.png", png))
+	qrImage.FillMode = canvas.ImageFillContain
+	qrImage.SetMinSize(fyne.NewSize(280, 280))
+	saveQR := widgets.NewButton(lang.L("Save QR image"), theme.DownloadIcon(), func() {
+		browser.SaveBytes(safeFileName(client.Name)+"_qr.png", "image/png", png)
+	})
+	left := container.NewVBox(container.NewCenter(qrImage), container.NewCenter(saveQR))
+
+	return container.NewBorder(nil, nil, left, nil, page)
 }
 
 // encodeQR renders the payload as a PNG, refusing anything too dense to scan.

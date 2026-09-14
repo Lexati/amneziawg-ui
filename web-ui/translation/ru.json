@@ -171,6 +171,7 @@
   "the web UI": "веб-интерфейс",
   "this view is unavailable": "это представление недоступно",
   "unknown": "неизвестно",
+  "up {{.Uptime}}": "работает {{.Uptime}}",
   "{{.Active}}/{{.Total}} servers running": "запущено серверов: {{.Active}}/{{.Total}}",
   "{{.Count}} characters": {
     "few": "{{.Count}} символа",
@@ -190,5 +191,8 @@
     "one": "{{.Count}} ядро",
     "other": "{{.Count}} ядра"
   },
+  "{{.Count}}d": "{{.Count}}д",
+  "{{.Count}}h": "{{.Count}}ч",
+  "{{.Count}}m": "{{.Count}}м",
   "{{.Field}} must be a number": "{{.Field}} должно быть числом"
 }

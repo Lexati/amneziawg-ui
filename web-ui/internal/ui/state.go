@@ -13,6 +13,7 @@ import (
 	"amneziawg-web-ui/web-ui/api"
 	"amneziawg-web-ui/web-ui/internal/ui/newserver"
 	"amneziawg-web-ui/web-ui/internal/ui/style"
+	"amneziawg-web-ui/web-ui/internal/ui/widgets"
 )
 
 const (
@@ -145,7 +146,8 @@ func (u *UI) loadSystemStatus() {
 
 	u.setSummary(lang.L("{{.Active}}/{{.Total}} servers running",
 		map[string]any{"Active": status.ActiveServers, "Total": status.TotalServers}) +
-		" · " + lang.N("{{.Count}} clients", status.TotalClients, map[string]any{"Count": status.TotalClients}))
+		" · " + lang.N("{{.Count}} clients", status.TotalClients, map[string]any{"Count": status.TotalClients}) +
+		" · " + lang.L("up {{.Uptime}}", map[string]any{"Uptime": widgets.Uptime(status.UptimeSeconds)}))
 	u.setPublicIP(status.PublicIP)
 }
 

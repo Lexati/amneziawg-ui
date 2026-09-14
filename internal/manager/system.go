@@ -25,6 +25,7 @@ func (m *Manager) SystemStatus() api.SystemStatus {
 		TotalServers:  len(servers),
 		TotalClients:  m.ClientCount(),
 		ActiveServers: active,
+		UptimeSeconds: time.Since(m.started).Seconds(),
 		Timestamp:     float64(time.Now().Unix()),
 		Environment: api.SystemEnvironment{
 			WebUIPort:        strconv.Itoa(m.settings.WebUIPort),

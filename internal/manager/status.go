@@ -13,6 +13,10 @@ const statusTTL = 2 * time.Second
 type statusObservation struct {
 	status string
 	at     time.Time
+	// since is when the interface was last seen coming up: the moment this
+	// code brought it up, or the first observation that found it running.
+	// Zero unless status is "running".
+	since time.Time
 }
 
 // ServerStatus checks the real interface state of a server.
@@ -57,11 +61,36 @@ func (m *Manager) cachedStatus(iface string) (string, bool) {
 }
 
 // noteServerStatus records a status this code just caused, so the next reader
-// does not have to wait out the cache or race the kernel.
+// does not have to wait out the cache or race the kernel. It also keeps the
+// moment the interface came up, which is what interfaceUptime measures from:
+// a running interface seen running again keeps its start, anything else
+// resets it.
 func (m *Manager) noteServerStatus(iface, status string) {
 	m.statusMu.Lock()
 	defer m.statusMu.Unlock()
-	m.statuses[iface] = statusObservation{status: status, at: time.Now()}
+	now := time.Now()
+	seen := statusObservation{status: status, at: now}
+	if status == "running" {
+		seen.since = now
+		if prev, ok := m.statuses[iface]; ok && prev.status == "running" {
+			seen.since = prev.since
+		}
+	}
+	m.statuses[iface] = seen
+}
+
+// interfaceUptime is how long the interface has been up, in seconds, as far
+// as this process has seen it: zero for one that is down or never observed.
+// The record outlives statusTTL on purpose - the cache expiring is not the
+// interface going down; that is noted when the next lookup finds it so.
+func (m *Manager) interfaceUptime(iface string) float64 {
+	m.statusMu.Lock()
+	defer m.statusMu.Unlock()
+	seen, ok := m.statuses[iface]
+	if !ok || seen.status != "running" {
+		return 0
+	}
+	return time.Since(seen.since).Seconds()
 }
 
 // forgetServerStatus drops a cached observation, for an interface that no

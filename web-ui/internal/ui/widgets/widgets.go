@@ -10,6 +10,7 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/driver/desktop"
+	"fyne.io/fyne/v2/lang"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
@@ -206,6 +207,26 @@ func Truncate(value string, limit int) string {
 		return value
 	}
 	return value[:limit] + "…"
+}
+
+// Uptime renders a duration in seconds the way an operator reads it: the
+// two largest units that matter - "3d 4h", "4h 12m", "12m" - and "< 1m"
+// while it is still counting its first minute.
+func Uptime(seconds float64) string {
+	total := int(seconds)
+	days, hours, minutes := total/86400, total%86400/3600, total%3600/60
+	switch {
+	case days > 0:
+		return lang.L("{{.Count}}d", map[string]any{"Count": days}) + " " +
+			lang.L("{{.Count}}h", map[string]any{"Count": hours})
+	case hours > 0:
+		return lang.L("{{.Count}}h", map[string]any{"Count": hours}) + " " +
+			lang.L("{{.Count}}m", map[string]any{"Count": minutes})
+	case minutes > 0:
+		return lang.L("{{.Count}}m", map[string]any{"Count": minutes})
+	default:
+		return "< " + lang.L("{{.Count}}m", map[string]any{"Count": 1})
+	}
 }
 
 // insetLayout pads its children by an explicit number of pixels, which the

@@ -21,7 +21,14 @@ func (m *Manager) TrafficSnapshot() api.TrafficSnapshot {
 			clientTraffic[srv.ID] = t
 		}
 		if c, ok := m.tools.InterfaceCounters(srv.Interface); ok {
-			serverTraffic[srv.ID] = api.InterfaceTraffic{RX: c.RX, TX: c.TX, RXBytes: c.RXBytes, TXBytes: c.TXBytes}
+			// Counters coming back is the interface being up, and this poll
+			// is the most frequent one: noting it here is what keeps the
+			// uptime running from the first sighting.
+			m.noteServerStatus(srv.Interface, "running")
+			serverTraffic[srv.ID] = api.InterfaceTraffic{
+				RX: c.RX, TX: c.TX, RXBytes: c.RXBytes, TXBytes: c.TXBytes,
+				UptimeSeconds: m.interfaceUptime(srv.Interface),
+			}
 		}
 	}
 

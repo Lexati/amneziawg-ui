@@ -171,6 +171,7 @@
   "the web UI": "the web UI",
   "this view is unavailable": "this view is unavailable",
   "unknown": "unknown",
+  "up {{.Uptime}}": "up {{.Uptime}}",
   "{{.Active}}/{{.Total}} servers running": "{{.Active}}/{{.Total}} servers running",
   "{{.Count}} characters": {
     "one": "{{.Count}} character",
@@ -184,5 +185,8 @@
     "one": "{{.Count}} core",
     "other": "{{.Count}} cores"
   },
+  "{{.Count}}d": "{{.Count}}d",
+  "{{.Count}}h": "{{.Count}}h",
+  "{{.Count}}m": "{{.Count}}m",
   "{{.Field}} must be a number": "{{.Field}} must be a number"
 }
