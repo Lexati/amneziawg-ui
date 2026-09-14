@@ -28,7 +28,8 @@ type Row struct {
 	server api.Server
 	client api.Client
 
-	traffic   *canvas.Text
+	rx        *canvas.Text
+	tx        *canvas.Text
 	handshake *canvas.Text
 	endpoint  *canvas.Text
 
@@ -41,7 +42,8 @@ func New(e *env.Env, server api.Server, client api.Client) *Row {
 		env:       e,
 		server:    server,
 		client:    client,
-		traffic:   widgets.SmallText(trafficText("—", "—"), style.Muted),
+		rx:        widgets.SmallText("—", style.Muted),
+		tx:        widgets.SmallText("—", style.Muted),
 		handshake: widgets.SmallText(handshakeText("—"), style.Muted),
 		endpoint:  widgets.SmallText(endpointText("—"), style.Muted),
 	}
@@ -67,8 +69,12 @@ func New(e *env.Env, server api.Server, client api.Client) *Row {
 		labels.Add(container.NewCenter(widgets.Badge(lang.L("auto-suspend {{.When}}", map[string]any{"When": when}), style.Error)))
 	}
 
+	// The counters carry the same glyphs as the dashboard tiles: download
+	// for received, upload for sent.
 	counters := container.NewHBox(
-		r.traffic, widgets.SmallText("·", style.Border),
+		container.NewCenter(widgets.SmallIcon(theme.DownloadIcon())), r.rx,
+		container.NewCenter(widgets.SmallIcon(theme.UploadIcon())), r.tx,
+		widgets.SmallText("·", style.Border),
 		r.handshake, widgets.SmallText("·", style.Border),
 		r.endpoint,
 	)
@@ -115,8 +121,10 @@ func (r *Row) CanvasObject() fyne.CanvasObject {
 // Apply pushes one traffic snapshot into the labels. Must run on the UI
 // goroutine.
 func (r *Row) Apply(data api.ClientTraffic) {
-	r.traffic.Text = trafficText(data.Received, data.Sent)
-	r.traffic.Refresh()
+	r.rx.Text = data.Received
+	r.rx.Refresh()
+	r.tx.Text = data.Sent
+	r.tx.Refresh()
 
 	r.handshake.Text = handshakeText(data.LastHandshake)
 	r.handshake.Refresh()
@@ -127,10 +135,6 @@ func (r *Row) Apply(data api.ClientTraffic) {
 	}
 	r.endpoint.Text = endpointText(endpoint)
 	r.endpoint.Refresh()
-}
-
-func trafficText(rx, tx string) string {
-	return lang.L("RX {{.RX}} · TX {{.TX}}", map[string]any{"RX": rx, "TX": tx})
 }
 
 func handshakeText(when string) string {

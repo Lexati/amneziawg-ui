@@ -7,8 +7,6 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/theme"
-	"fyne.io/fyne/v2/widget"
 
 	"amneziawg-web-ui/web-ui/internal/ui/style"
 	"amneziawg-web-ui/web-ui/internal/ui/widgets"
@@ -35,11 +33,7 @@ func newTile(icon fyne.Resource, caption, footCaption string, tint color.NRGBA, 
 	head := canvas.NewText(strings.ToUpper(caption), style.Muted)
 	head.TextSize = 11
 	head.TextStyle = fyne.TextStyle{Bold: true}
-	glyph := widget.NewIcon(theme.NewColoredResource(icon, theme.ColorNamePlaceHolder))
-	headRow := container.NewHBox(
-		container.NewGridWrap(fyne.NewSize(14, 14), glyph),
-		container.NewCenter(head),
-	)
+	headRow := container.NewHBox(widgets.SmallIcon(icon), container.NewCenter(head))
 
 	t.value = canvas.NewText("—", style.Text)
 	t.value.TextSize = 20

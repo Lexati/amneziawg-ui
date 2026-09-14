@@ -22,14 +22,15 @@ import (
 	"amneziawg-web-ui/web-ui/internal/ui/widgets"
 )
 
-// Card is one server's panel. It keeps the interface counter label the
+// Card is one server's panel. It keeps the interface counter labels the
 // traffic feed updates in place, and the client rows below it.
 type Card struct {
 	env    *env.Env
 	server api.Server
 
-	ifaceText *canvas.Text
-	clients   *clientlist.List
+	rx      *canvas.Text
+	tx      *canvas.Text
+	clients *clientlist.List
 
 	object fyne.CanvasObject
 }
@@ -58,7 +59,15 @@ func New(e *env.Env, srv api.Server) *Card {
 		meta = append(meta, lang.L("Obfuscated (AWG 3.1)"))
 	}
 
-	c.ifaceText = widgets.SmallText(interfaceTraffic("—", "—"), style.Muted)
+	// The interface counters carry the same glyphs as the client rows and
+	// the dashboard tiles: download for received, upload for sent.
+	c.rx = widgets.SmallText("—", style.Muted)
+	c.tx = widgets.SmallText("—", style.Muted)
+	iface := container.NewHBox(
+		widgets.SmallText(lang.L("Interface")+":", style.Muted),
+		container.NewCenter(widgets.SmallIcon(theme.DownloadIcon())), c.rx,
+		container.NewCenter(widgets.SmallIcon(theme.UploadIcon())), c.tx,
+	)
 
 	remove := widgets.NewButton("", theme.DeleteIcon(), c.confirmDelete)
 	remove.Importance = widget.DangerImportance
@@ -67,7 +76,7 @@ func New(e *env.Env, srv api.Server) *Card {
 		container.NewVBox(
 			title,
 			widgets.SmallText(strings.Join(meta, "  ·  "), style.Muted),
-			c.ifaceText,
+			iface,
 		),
 		container.NewHBox(
 			container.NewCenter(widgets.Badge(strings.ToUpper(lang.L(srv.Status)), statusColor)),
@@ -113,19 +122,17 @@ func (c *Card) CanvasObject() fyne.CanvasObject {
 	return c.object
 }
 
-// ApplyInterfaceTraffic updates the RX/TX line of the interface; ok is false
-// for a server whose interface is down. Must run on the UI goroutine.
+// ApplyInterfaceTraffic updates the RX/TX counters of the interface; ok is
+// false for a server whose interface is down. Must run on the UI goroutine.
 func (c *Card) ApplyInterfaceTraffic(traffic api.InterfaceTraffic, ok bool) {
 	rx, tx := "—", "—"
 	if ok {
 		rx, tx = traffic.RX, traffic.TX
 	}
-	c.ifaceText.Text = interfaceTraffic(rx, tx)
-	c.ifaceText.Refresh()
-}
-
-func interfaceTraffic(rx, tx string) string {
-	return lang.L("Interface: RX {{.RX}} · TX {{.TX}}", map[string]any{"RX": rx, "TX": tx})
+	c.rx.Text = rx
+	c.rx.Refresh()
+	c.tx.Text = tx
+	c.tx.Refresh()
 }
 
 // ApplyPeerTraffic hands the per-client snapshot down to the rows. Must run

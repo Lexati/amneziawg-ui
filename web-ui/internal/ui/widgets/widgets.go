@@ -10,6 +10,7 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/driver/desktop"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
 	"amneziawg-web-ui/web-ui/internal/ui/style"
@@ -105,6 +106,13 @@ func SmallText(text string, c color.Color) *canvas.Text {
 	t := canvas.NewText(text, c)
 	t.TextSize = 12
 	return t
+}
+
+// SmallIcon is a 14px glyph in the muted colour, sized to sit next to
+// SmallText on the same line.
+func SmallIcon(icon fyne.Resource) fyne.CanvasObject {
+	glyph := widget.NewIcon(theme.NewColoredResource(icon, theme.ColorNamePlaceHolder))
+	return container.NewGridWrap(fyne.NewSize(14, 14), glyph)
 }
 
 // Badge is a small rounded tag in the given colour.
