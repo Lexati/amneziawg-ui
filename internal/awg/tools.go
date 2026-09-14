@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 )
@@ -120,23 +119,39 @@ func (t *Tools) RouteSourceIP() (string, error) {
 	return t.run.Run("ip route get 1 | awk '{print $7}' | head -1")
 }
 
-// PeerStats is what `awg show` reports about one peer.
+// PeerStats is what `awg show` reports about one peer: the exact byte counts
+// of the `transfer` listing, and the endpoint and handshake age as the plain
+// listing words them.
 type PeerStats struct {
-	Received, Sent, LastHandshake, Endpoint string
+	RXBytes, TXBytes        uint64
+	LastHandshake, Endpoint string
 }
 
-// ShowPeers parses `awg show <iface>` into per-peer counters keyed by the
-// peer's public key. A down interface yields nil.
+// ShowPeers reads the peers of an interface, keyed by public key. The bytes
+// come from `awg show <iface> transfer` rather than the rounded figures of
+// the plain listing (or the interface counters of ifconfig, which count the
+// decrypted payload and so fall short of what the peers moved on the wire)
+// - the server card sums these same numbers, so it always agrees with its
+// client rows. A down interface yields nil.
 func (t *Tools) ShowPeers(iface string) map[string]PeerStats {
-	output, err := t.run.Run(fmt.Sprintf("%s show %s", filepath.Join(t.BinDir, "awg"), iface))
+	awg := filepath.Join(t.BinDir, "awg")
+	output, err := t.run.Run(fmt.Sprintf("%s show %s", awg, iface))
 	if err != nil || output == "" {
 		return nil
 	}
-	return ParseShow(output)
+	peers := ParseShow(output)
+	transfer, _ := t.run.Run(fmt.Sprintf("%s show %s transfer", awg, iface))
+	for key, tr := range ParseTransfer(transfer) {
+		p := peers[key]
+		p.RXBytes, p.TXBytes = tr.RXBytes, tr.TXBytes
+		peers[key] = p
+	}
+	return peers
 }
 
-// ParseShow reads the output of `awg show`. It is separate from ShowPeers so
-// the parser can be tested on captured output.
+// ParseShow reads the output of `awg show`: who the peers are, where they
+// are, and when they last shook hands. It is separate from ShowPeers so the
+// parser can be tested on captured output.
 func ParseShow(output string) map[string]PeerStats {
 	peers := map[string]PeerStats{}
 	current := ""
@@ -145,19 +160,9 @@ func ParseShow(output string) map[string]PeerStats {
 		switch {
 		case strings.HasPrefix(line, "peer:"):
 			current = strings.TrimSpace(strings.TrimPrefix(line, "peer:"))
-			peers[current] = PeerStats{Received: "0 B", Sent: "0 B", LastHandshake: "Never"}
+			peers[current] = PeerStats{LastHandshake: "Never"}
 		case current == "":
 			continue
-		case strings.HasPrefix(line, "transfer:"):
-			parts := strings.SplitN(strings.TrimPrefix(line, "transfer:"), ",", 2)
-			if len(parts) == 2 {
-				// "1.20 MiB received, 3.40 MiB sent": the units stay, the
-				// direction is already implied by the field.
-				p := peers[current]
-				p.Received = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(parts[0]), " received"))
-				p.Sent = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(parts[1]), " sent"))
-				peers[current] = p
-			}
 		case strings.HasPrefix(line, "endpoint:"):
 			p := peers[current]
 			p.Endpoint = strings.TrimSpace(strings.TrimPrefix(line, "endpoint:"))
@@ -171,41 +176,27 @@ func ParseShow(output string) map[string]PeerStats {
 	return peers
 }
 
-// Compiled once: the traffic snapshot calls InterfaceCounters for every
-// server on every poll, and compiling these two on each call costs more than
-// the matching itself. Each captures the raw byte count and the rounded
-// figure ifconfig prints next to it.
-var (
-	rxRe = regexp.MustCompile(`RX bytes:(\d+)\s+\(([^)]+)\)`)
-	txRe = regexp.MustCompile(`TX bytes:(\d+)\s+\(([^)]+)\)`)
-)
-
-// Counters is what ifconfig reports for one interface: the totals as it
-// prints them for a human, and the exact byte counts behind them.
-type Counters struct {
-	RX, TX           string
+// Transfer is one line of `awg show <iface> transfer`: what the interface
+// received from a peer and sent to it, in bytes.
+type Transfer struct {
 	RXBytes, TXBytes uint64
 }
 
-// InterfaceCounters reads the RX/TX totals of an interface from ifconfig. ok
-// is false for an interface that is down.
-func (t *Tools) InterfaceCounters(iface string) (c Counters, ok bool) {
-	output, err := t.run.Run(fmt.Sprintf("ifconfig %s", iface))
-	if err != nil || output == "" {
-		return Counters{}, false
+// ParseTransfer reads `awg show <iface> transfer`, one "<key>\t<rx>\t<tx>"
+// line per peer. Lines that do not fit are skipped.
+func ParseTransfer(output string) map[string]Transfer {
+	peers := map[string]Transfer{}
+	for _, line := range strings.Split(output, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) != 3 {
+			continue
+		}
+		rx, errRX := strconv.ParseUint(fields[1], 10, 64)
+		tx, errTX := strconv.ParseUint(fields[2], 10, 64)
+		if errRX != nil || errTX != nil {
+			continue
+		}
+		peers[fields[0]] = Transfer{RXBytes: rx, TXBytes: tx}
 	}
-	c.RX, c.RXBytes = counter(rxRe, output)
-	c.TX, c.TXBytes = counter(txRe, output)
-	return c, true
-}
-
-// counter pulls one direction out of the ifconfig output, "0 B" when the
-// line is missing.
-func counter(re *regexp.Regexp, output string) (human string, bytes uint64) {
-	m := re.FindStringSubmatch(output)
-	if len(m) < 3 {
-		return "0 B", 0
-	}
-	bytes, _ = strconv.ParseUint(m[1], 10, 64)
-	return m[2], bytes
+	return peers
 }

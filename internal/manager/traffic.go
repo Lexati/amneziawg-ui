@@ -3,13 +3,15 @@ package manager
 import (
 	"time"
 
+	"amneziawg-web-ui/internal/awg"
 	"amneziawg-web-ui/web-ui/api"
 )
 
-// TrafficSnapshot collects the interface and peer counters of every server,
-// plus the host's own gauges, into the one response the page polls. Servers
-// that are down contribute nothing; the page keeps their last counters as
-// they were.
+// TrafficSnapshot collects the peer counters of every server, plus the
+// host's own gauges, into the one response the page polls. A server's own
+// figure is the sum over its peers, so the card and the client rows below
+// it are read off the same counters and never disagree. Servers that are
+// down contribute nothing; the page keeps their last counters as they were.
 func (m *Manager) TrafficSnapshot() api.TrafficSnapshot {
 	servers := m.copyServers()
 
@@ -17,18 +19,26 @@ func (m *Manager) TrafficSnapshot() api.TrafficSnapshot {
 	serverTraffic := map[string]api.InterfaceTraffic{}
 	for i := range servers {
 		srv := &servers[i]
-		if t := m.peerTraffic(srv); len(t) > 0 {
+		peers := m.tools.ShowPeers(srv.Interface)
+		if peers == nil {
+			continue
+		}
+		// Peers coming back is the interface being up, and this poll is
+		// the most frequent one: noting it here is what keeps the uptime
+		// running from the first sighting.
+		m.noteServerStatus(srv.Interface, "running")
+		if t := peerTraffic(srv, peers); len(t) > 0 {
 			clientTraffic[srv.ID] = t
 		}
-		if c, ok := m.tools.InterfaceCounters(srv.Interface); ok {
-			// Counters coming back is the interface being up, and this poll
-			// is the most frequent one: noting it here is what keeps the
-			// uptime running from the first sighting.
-			m.noteServerStatus(srv.Interface, "running")
-			serverTraffic[srv.ID] = api.InterfaceTraffic{
-				RX: c.RX, TX: c.TX, RXBytes: c.RXBytes, TXBytes: c.TXBytes,
-				UptimeSeconds: m.interfaceUptime(srv.Interface),
-			}
+		var rx, tx uint64
+		for _, p := range peers {
+			rx += p.RXBytes
+			tx += p.TXBytes
+		}
+		serverTraffic[srv.ID] = api.InterfaceTraffic{
+			RX: api.FormatBytes(float64(rx)), TX: api.FormatBytes(float64(tx)),
+			RXBytes: rx, TXBytes: tx,
+			UptimeSeconds: m.interfaceUptime(srv.Interface),
 		}
 	}
 
@@ -42,23 +52,18 @@ func (m *Manager) TrafficSnapshot() api.TrafficSnapshot {
 
 // peerTraffic joins what `awg show` reports with the clients the server
 // owns, keyed by client ID. srv is a snapshot, so no lock is needed.
-func (m *Manager) peerTraffic(srv *api.Server) map[string]api.ClientTraffic {
-	peers := m.tools.ShowPeers(srv.Interface)
-	if peers == nil {
-		return nil
-	}
-
+func peerTraffic(srv *api.Server, peers map[string]awg.PeerStats) map[string]api.ClientTraffic {
 	result := map[string]api.ClientTraffic{}
 	for _, c := range srv.Clients {
-		if p, ok := peers[c.ClientPublicKey]; ok {
-			result[c.ID] = api.ClientTraffic{
-				Received:      p.Received,
-				Sent:          p.Sent,
-				LastHandshake: p.LastHandshake,
-				Endpoint:      p.Endpoint,
-			}
-		} else {
-			result[c.ID] = api.ClientTraffic{Received: "0 B", Sent: "0 B", LastHandshake: "Never"}
+		p, ok := peers[c.ClientPublicKey]
+		if !ok {
+			p = awg.PeerStats{LastHandshake: "Never"}
+		}
+		result[c.ID] = api.ClientTraffic{
+			Received:      api.FormatBytes(float64(p.RXBytes)),
+			Sent:          api.FormatBytes(float64(p.TXBytes)),
+			LastHandshake: p.LastHandshake,
+			Endpoint:      p.Endpoint,
 		}
 	}
 	return result

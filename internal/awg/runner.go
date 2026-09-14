@@ -1,5 +1,5 @@
 // Package awg is the backend's only way onto the host: every shell command
-// it needs - the amneziawg-tools binaries, ip(8), ifconfig, the iptables
+// it needs - the amneziawg-tools binaries, ip(8), the iptables
 // scripts - is issued from here, through a Runner that tests replace.
 package awg
 

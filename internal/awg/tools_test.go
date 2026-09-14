@@ -28,33 +28,35 @@ func TestParseShow(t *testing.T) {
 		t.Fatalf("peers = %v", peers)
 	}
 	p1 := peers["PEER1"]
-	if p1.Received != "1.20 MiB" || p1.Sent != "3.40 MiB" || p1.Endpoint != "203.0.113.5:51820" ||
-		p1.LastHandshake != "1 minute, 3 seconds ago" {
+	if p1.Endpoint != "203.0.113.5:51820" || p1.LastHandshake != "1 minute, 3 seconds ago" {
 		t.Errorf("PEER1 = %+v", p1)
 	}
 	p2 := peers["PEER2"]
-	if p2.Received != "0 B" || p2.Sent != "0 B" || p2.LastHandshake != "Never" || p2.Endpoint != "" {
+	if p2.LastHandshake != "Never" || p2.Endpoint != "" {
 		t.Errorf("PEER2 = %+v", p2)
 	}
 }
 
-func TestInterfaceCounters(t *testing.T) {
-	run := awgtest.New().Stub("ifconfig wg-up",
-		"wg-up: flags=209<UP,POINTOPOINT,RUNNING,NOARP>\n"+
-			"          RX bytes:1234567 (1.1 MiB)  TX bytes:7654321 (7.2 MiB)\n")
+// The bytes come from the transfer listing, exact and for every peer, not
+// from the rounded "1.20 MiB" of the plain one.
+func TestShowPeersTakesBytesFromTheTransferListing(t *testing.T) {
+	run := awgtest.New().
+		Stub("/usr/bin/awg show wg-up", showOutput).
+		Stub("/usr/bin/awg show wg-up transfer", "PEER1\t1258291\t3565158\nPEER2\t0\t0\nbroken line\n")
 	tools := awg.New(run)
 
-	c, ok := tools.InterfaceCounters("wg-up")
-	if !ok || c.RX != "1.1 MiB" || c.TX != "7.2 MiB" {
-		t.Errorf("InterfaceCounters = %+v, %v", c, ok)
+	peers := tools.ShowPeers("wg-up")
+	if p := peers["PEER1"]; p.RXBytes != 1258291 || p.TXBytes != 3565158 || p.Endpoint != "203.0.113.5:51820" {
+		t.Errorf("PEER1 = %+v", p)
 	}
-	// The rounded figures are for the card; the dashboard's rates come from
-	// the exact counts, which must survive the trip.
-	if c.RXBytes != 1234567 || c.TXBytes != 7654321 {
-		t.Errorf("raw bytes = %d/%d, want 1234567/7654321", c.RXBytes, c.TXBytes)
+	if p := peers["PEER2"]; p.RXBytes != 0 || p.TXBytes != 0 || p.LastHandshake != "Never" {
+		t.Errorf("PEER2 = %+v", p)
 	}
-	if _, ok := tools.InterfaceCounters("wg-down"); ok {
-		t.Error("a down interface reported counters")
+	if len(peers) != 2 {
+		t.Errorf("peers = %v, want the two of the listing", peers)
+	}
+	if tools.ShowPeers("wg-down") != nil {
+		t.Error("a down interface reported peers")
 	}
 }
 
