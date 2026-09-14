@@ -110,10 +110,13 @@ func (u *UI) Start() {
 	go u.loadDefaultISettings()
 	go u.reloadServers()
 
+	// The first poll goes out at once rather than after an interval: the
+	// dashboard's gauges have nothing to show until it lands, and its rates
+	// need a second one on top of that.
 	go func() {
 		for {
-			time.Sleep(trafficInterval)
 			u.refreshTraffic()
+			time.Sleep(trafficInterval)
 		}
 	}()
 	go func() {
@@ -199,15 +202,18 @@ func (u *UI) reloadServers() {
 	u.refreshTraffic()
 }
 
-// refreshTraffic fetches the counters and hands them to the list on the UI
-// goroutine.
+// refreshTraffic fetches the counters and hands them to the list and the
+// dashboard on the UI goroutine.
 func (u *UI) refreshTraffic() {
 	traffic, err := u.env.Backend.Traffic()
 	if err != nil {
 		u.unreachable()
 		return
 	}
-	fyne.Do(func() { u.list.ApplyTraffic(traffic.ServerTraffic, traffic.ClientTraffic) })
+	fyne.Do(func() {
+		u.list.ApplyTraffic(traffic.ServerTraffic, traffic.ClientTraffic)
+		u.charts.Apply(traffic)
+	})
 }
 
 // fingerprint is a cheap "did anything change" marker for the server list.

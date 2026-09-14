@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -172,25 +173,39 @@ func ParseShow(output string) map[string]PeerStats {
 
 // Compiled once: the traffic snapshot calls InterfaceCounters for every
 // server on every poll, and compiling these two on each call costs more than
-// the matching itself.
+// the matching itself. Each captures the raw byte count and the rounded
+// figure ifconfig prints next to it.
 var (
-	rxRe = regexp.MustCompile(`RX bytes:\d+\s+\(([^)]+)\)`)
-	txRe = regexp.MustCompile(`TX bytes:\d+\s+\(([^)]+)\)`)
+	rxRe = regexp.MustCompile(`RX bytes:(\d+)\s+\(([^)]+)\)`)
+	txRe = regexp.MustCompile(`TX bytes:(\d+)\s+\(([^)]+)\)`)
 )
 
-// InterfaceCounters reads the human-readable RX/TX totals of an interface
-// from ifconfig. ok is false for an interface that is down.
-func (t *Tools) InterfaceCounters(iface string) (rx, tx string, ok bool) {
+// Counters is what ifconfig reports for one interface: the totals as it
+// prints them for a human, and the exact byte counts behind them.
+type Counters struct {
+	RX, TX           string
+	RXBytes, TXBytes uint64
+}
+
+// InterfaceCounters reads the RX/TX totals of an interface from ifconfig. ok
+// is false for an interface that is down.
+func (t *Tools) InterfaceCounters(iface string) (c Counters, ok bool) {
 	output, err := t.run.Run(fmt.Sprintf("ifconfig %s", iface))
 	if err != nil || output == "" {
-		return "", "", false
+		return Counters{}, false
 	}
-	rx, tx = "0 B", "0 B"
-	if m := rxRe.FindStringSubmatch(output); len(m) > 1 {
-		rx = m[1]
+	c.RX, c.RXBytes = counter(rxRe, output)
+	c.TX, c.TXBytes = counter(txRe, output)
+	return c, true
+}
+
+// counter pulls one direction out of the ifconfig output, "0 B" when the
+// line is missing.
+func counter(re *regexp.Regexp, output string) (human string, bytes uint64) {
+	m := re.FindStringSubmatch(output)
+	if len(m) < 3 {
+		return "0 B", 0
 	}
-	if m := txRe.FindStringSubmatch(output); len(m) > 1 {
-		tx = m[1]
-	}
-	return rx, tx, true
+	bytes, _ = strconv.ParseUint(m[1], 10, 64)
+	return m[2], bytes
 }

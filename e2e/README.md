@@ -7,6 +7,12 @@ The frontend renders into a single `<canvas>`, so there is nothing to select
 by CSS: the specs click by coordinate (at a fixed 1500x950 viewport) and check
 the result through `/api/...`. Screenshots of every step land in `shots/`.
 
+`startApp` collapses the monitoring panel at the top of the page before a
+spec gets to click: open, it would push the form and the cards below the
+fold. Every coordinate in the specs assumes that collapsed 56px row above the
+"Create New VPN Server" button; dialogs are centred in the window and do not
+move either way.
+
 ## Running
 
 From the repository root:

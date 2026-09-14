@@ -6,26 +6,26 @@ test('create a server through the UI', async ({ page, request }) => {
 
   // Open the "Create New VPN Server" accordion. It comes up in the simple
   // mode: a name, a port, and everything else generated on submit.
-  await click(page, 130, 87);
+  await click(page, 130, 143);
   await page.screenshot({ path: 'shots/02-form.png' });
 
   // Tick and untick "Advanced settings" first: the rows it appends to the form
   // and the obfuscation block it reveals have to survive the round trip, and
   // the page-error assertion at the end covers a panic on the way.
-  await click(page, 35, 189);
+  await click(page, 35, 245);
   await page.screenshot({ path: 'shots/02-advanced.png' });
   await scroll(page, 750, 500, 3000);
   await page.screenshot({ path: 'shots/02-advanced-bottom.png' });
   await scroll(page, 750, 500, -3000);
-  await click(page, 35, 189);
+  await click(page, 35, 245);
   await page.screenshot({ path: 'shots/02-simple.png' });
 
   // The name is the only thing the simple mode has no default for.
-  await click(page, 380, 149);
+  await click(page, 380, 205);
   await type(page, 'E2E Server');
   await page.screenshot({ path: 'shots/03-named.png' });
 
-  await click(page, 87, 267);
+  await click(page, 87, 323);
 
   await expect.poll(async () => (await api(request, '/api/servers')).length,
     { timeout: 60_000, intervals: [1000] }).toBe(1);

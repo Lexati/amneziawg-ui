@@ -13,6 +13,7 @@ import (
 	"amneziawg-web-ui/internal/config"
 	"amneziawg-web-ui/internal/publicip"
 	"amneziawg-web-ui/internal/store"
+	"amneziawg-web-ui/internal/sysinfo"
 )
 
 // Manager orchestrates all AmneziaWG operations.
@@ -20,6 +21,7 @@ type Manager struct {
 	settings config.Settings
 	store    *store.Store
 	tools    *awg.Tools
+	host     sysinfo.Host
 
 	// cfg is the live config. Every read and write goes through mu; nothing
 	// handed out of this package points into it.
@@ -46,6 +48,7 @@ func New(settings config.Settings, st *store.Store, tools *awg.Tools) *Manager {
 		settings: settings,
 		store:    st,
 		tools:    tools,
+		host:     sysinfo.Default(settings.WireguardConfigDir),
 		statuses: map[string]statusObservation{},
 	}
 

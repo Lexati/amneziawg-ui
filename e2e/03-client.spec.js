@@ -8,7 +8,7 @@ test('add a client and open its config', async ({ page, request }) => {
   expect(server, 'the create spec must run first').toBeTruthy();
 
   // "Add client" on the server card.
-  await click(page, 225, 211);
+  await click(page, 225, 267);
   await page.waitForTimeout(1200);
   await page.screenshot({ path: 'shots/06-client-dialog.png' });
 

@@ -23,8 +23,8 @@ func TestTrafficSnapshotJoinsPeersWithClients(t *testing.T) {
 	if peers[quiet.ID].Received != "0 B" || peers[quiet.ID].LastHandshake != "Never" {
 		t.Errorf("quiet client = %+v", peers[quiet.ID])
 	}
-	if snap.ServerTraffic["s1"]["rx"] != "10.0 B" || snap.ServerTraffic["s1"]["tx"] != "20.0 B" {
-		t.Errorf("server traffic = %v", snap.ServerTraffic["s1"])
+	if got, want := snap.ServerTraffic["s1"], (api.InterfaceTraffic{RX: "10.0 B", TX: "20.0 B", RXBytes: 10, TXBytes: 20}); got != want {
+		t.Errorf("server traffic = %+v, want %+v", got, want)
 	}
 }
 
@@ -35,5 +35,16 @@ func TestTrafficSnapshotSkipsDownInterfaces(t *testing.T) {
 	snap := m.TrafficSnapshot()
 	if len(snap.ClientTraffic) != 0 || len(snap.ServerTraffic) != 0 {
 		t.Errorf("down interface reported traffic: %+v", snap)
+	}
+}
+
+// The host gauges ride along in the same poll. What exactly they read is the
+// sysinfo package's business; here it is enough that the real procfs gets
+// through to the response.
+func TestTrafficSnapshotCarriesSystemMetrics(t *testing.T) {
+	m, _ := newTestManager(t)
+	sys := m.TrafficSnapshot().System
+	if sys.CPU.Cores == 0 || sys.CPU.TotalSeconds == 0 || sys.Memory.Total == 0 {
+		t.Errorf("system metrics = %+v", sys)
 	}
 }

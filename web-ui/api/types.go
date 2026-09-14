@@ -152,9 +152,17 @@ type ClientTraffic struct {
 	Endpoint      string `json:"endpoint"`
 }
 
-// InterfaceTraffic holds the RX/TX counters of one WireGuard interface,
-// keyed "rx" and "tx".
-type InterfaceTraffic = map[string]string
+// InterfaceTraffic holds the RX/TX counters of one WireGuard interface: the
+// human-readable totals a server card shows, and the raw byte counts behind
+// them, which the dashboard sums over the servers and turns into a rate by
+// differencing consecutive polls. The backend keeps no history - the page
+// holds the window it draws.
+type InterfaceTraffic struct {
+	RX      string `json:"rx"`
+	TX      string `json:"tx"`
+	RXBytes uint64 `json:"rx_bytes"`
+	TXBytes uint64 `json:"tx_bytes"`
+}
 
 // ISettings are the optional I1-I5 signature packets, keyed "i1".."i5".
 type ISettings = map[string]string
@@ -274,10 +282,39 @@ type SystemEnvironment struct {
 	DefaultDNS       string `json:"default_dns"`
 }
 
+// SystemMetrics is one instantaneous reading of the host the backend runs
+// on, carried in every TrafficSnapshot. CPU comes as cumulative time, like
+// the traffic counters come as cumulative bytes, so the page computes the
+// load over its own polling interval and the backend stores nothing between
+// calls.
+type SystemMetrics struct {
+	CPU     CPUMetrics   `json:"cpu"`
+	Memory  UsageMetrics `json:"memory"`
+	Storage UsageMetrics `json:"storage"`
+}
+
+// CPUMetrics is the processor: the logical core count and the busy and total
+// CPU seconds since boot, summed over all cores. The load between two
+// readings is the ratio of their busy and total deltas.
+type CPUMetrics struct {
+	Cores        int     `json:"cores"`
+	BusySeconds  float64 `json:"busy_seconds"`
+	TotalSeconds float64 `json:"total_seconds"`
+}
+
+// UsageMetrics is a capacity and how much of it is in use, in bytes. Total
+// is zero when the reading is unavailable.
+type UsageMetrics struct {
+	Total uint64 `json:"total"`
+	Used  uint64 `json:"used"`
+}
+
 // TrafficSnapshot is the /api/traffic response the page polls: interface
-// counters per server, and peer counters per server and client.
+// counters per server, peer counters per server and client, and the host's
+// own gauges, so one poll feeds both the cards and the dashboard.
 type TrafficSnapshot struct {
 	Timestamp     float64                             `json:"timestamp"`
 	ClientTraffic map[string]map[string]ClientTraffic `json:"client_traffic"`
 	ServerTraffic map[string]InterfaceTraffic         `json:"server_traffic"`
+	System        SystemMetrics                       `json:"system"`
 }

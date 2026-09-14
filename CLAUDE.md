@@ -4,7 +4,7 @@
 
 Backend packages live under `internal`, one responsibility each, with a
 one-way dependency graph `httpapi → manager → {store, awg, wgconf,
-amnezialink, publicip, config}`:
+amnezialink, publicip, config, sysinfo}`:
 
 - `httpapi` — REST handlers; no `os`/`exec`, everything goes through the
   exported `manager` API and errors map to status codes in `fail`
@@ -13,6 +13,9 @@ amnezialink, publicip, config}`:
   `suspend.go`, `status.go`, `traffic.go`, `system.go`)
 - `awg` — the only package that shells out, behind the `Runner` interface;
   tests use `awg/awgtest` instead of the host
+- `sysinfo` — CPU/RAM/disk readings of the host via `gopsutil`, carried in
+  `/api/traffic` as instantaneous, cumulative figures; the dashboard keeps the
+  history and computes rates, the backend stores nothing between polls
 - `wgconf` — `.conf` text: rendering, peer markers, suspended blocks
 - `amnezialink` — `vpn://` export; `store` — `web_config.json` and schema
   migrations; `config` — env → `Settings`; `frontend` — static assets
@@ -22,7 +25,8 @@ amnezialink, publicip, config}`:
 - Own Go module in `web-ui`, built with `go tool fyne package -os wasm`
 
 Placement of frontend files in `web-ui` directory: `main.go` is the entry
-point and the UI lives in the `web-ui/internal/ui`
+point and the UI lives in the `web-ui/internal/ui`; the page top to bottom is
+`dashboard` (charts), `newserver` (create form), `serverlist` (cards)
 
 `web-ui/api` is what the two sides share, pulled into the root module via a
 `replace` directive: the wire structs, and the AmneziaWG rules that go with

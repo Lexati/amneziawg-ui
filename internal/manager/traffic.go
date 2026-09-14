@@ -6,9 +6,10 @@ import (
 	"amneziawg-web-ui/web-ui/api"
 )
 
-// TrafficSnapshot collects the interface and peer counters of every server
-// into the one response the page polls. Servers that are down contribute
-// nothing; the page keeps their last counters as they were.
+// TrafficSnapshot collects the interface and peer counters of every server,
+// plus the host's own gauges, into the one response the page polls. Servers
+// that are down contribute nothing; the page keeps their last counters as
+// they were.
 func (m *Manager) TrafficSnapshot() api.TrafficSnapshot {
 	servers := m.copyServers()
 
@@ -19,8 +20,8 @@ func (m *Manager) TrafficSnapshot() api.TrafficSnapshot {
 		if t := m.peerTraffic(srv); len(t) > 0 {
 			clientTraffic[srv.ID] = t
 		}
-		if rx, tx, ok := m.tools.InterfaceCounters(srv.Interface); ok {
-			serverTraffic[srv.ID] = api.InterfaceTraffic{"rx": rx, "tx": tx}
+		if c, ok := m.tools.InterfaceCounters(srv.Interface); ok {
+			serverTraffic[srv.ID] = api.InterfaceTraffic{RX: c.RX, TX: c.TX, RXBytes: c.RXBytes, TXBytes: c.TXBytes}
 		}
 	}
 
@@ -28,6 +29,7 @@ func (m *Manager) TrafficSnapshot() api.TrafficSnapshot {
 		Timestamp:     float64(time.Now().Unix()),
 		ClientTraffic: clientTraffic,
 		ServerTraffic: serverTraffic,
+		System:        m.host.Metrics(),
 	}
 }
 

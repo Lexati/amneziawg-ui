@@ -44,11 +44,16 @@ func TestInterfaceCounters(t *testing.T) {
 			"          RX bytes:1234567 (1.1 MiB)  TX bytes:7654321 (7.2 MiB)\n")
 	tools := awg.New(run)
 
-	rx, tx, ok := tools.InterfaceCounters("wg-up")
-	if !ok || rx != "1.1 MiB" || tx != "7.2 MiB" {
-		t.Errorf("InterfaceCounters = %q, %q, %v", rx, tx, ok)
+	c, ok := tools.InterfaceCounters("wg-up")
+	if !ok || c.RX != "1.1 MiB" || c.TX != "7.2 MiB" {
+		t.Errorf("InterfaceCounters = %+v, %v", c, ok)
 	}
-	if _, _, ok := tools.InterfaceCounters("wg-down"); ok {
+	// The rounded figures are for the card; the dashboard's rates come from
+	// the exact counts, which must survive the trip.
+	if c.RXBytes != 1234567 || c.TXBytes != 7654321 {
+		t.Errorf("raw bytes = %d/%d, want 1234567/7654321", c.RXBytes, c.TXBytes)
+	}
+	if _, ok := tools.InterfaceCounters("wg-down"); ok {
 		t.Error("a down interface reported counters")
 	}
 }

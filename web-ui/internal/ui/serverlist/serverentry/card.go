@@ -113,12 +113,12 @@ func (c *Card) CanvasObject() fyne.CanvasObject {
 	return c.object
 }
 
-// ApplyInterfaceTraffic updates the RX/TX line of the interface. Must run on
-// the UI goroutine.
-func (c *Card) ApplyInterfaceTraffic(traffic api.InterfaceTraffic) {
+// ApplyInterfaceTraffic updates the RX/TX line of the interface; ok is false
+// for a server whose interface is down. Must run on the UI goroutine.
+func (c *Card) ApplyInterfaceTraffic(traffic api.InterfaceTraffic, ok bool) {
 	rx, tx := "—", "—"
-	if traffic != nil {
-		rx, tx = traffic["rx"], traffic["tx"]
+	if ok {
+		rx, tx = traffic.RX, traffic.TX
 	}
 	c.ifaceText.Text = interfaceTraffic(rx, tx)
 	c.ifaceText.Refresh()

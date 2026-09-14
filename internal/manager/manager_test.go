@@ -9,6 +9,7 @@ import (
 	"amneziawg-web-ui/internal/awg/awgtest"
 	"amneziawg-web-ui/internal/config"
 	"amneziawg-web-ui/internal/store"
+	"amneziawg-web-ui/internal/sysinfo"
 	"amneziawg-web-ui/web-ui/api"
 )
 
@@ -34,6 +35,7 @@ func newTestManager(t *testing.T) (*Manager, *awgtest.Runner) {
 		settings: settings,
 		store:    store.New(settings.ConfigFile),
 		tools:    awg.New(run),
+		host:     sysinfo.Default(dir),
 		statuses: map[string]statusObservation{},
 		cfg: &store.AppConfig{SchemaVersion: store.SchemaVersion, Servers: []api.Server{{
 			ID: "s1", Name: "srv", Interface: "wg-test-absent", ConfigPath: confPath,

@@ -13,6 +13,11 @@ async function startApp(page) {
   await page.waitForFunction(() => document.getElementById('main')?.style.display === 'none', null,
     { timeout: 120_000 });
   await page.waitForTimeout(3000);
+
+  // Fold the monitoring panel away. It opens by default and is a quarter of
+  // the viewport tall, which would push the form and the cards the specs
+  // click on below the fold; collapsed, it is one 56px row above them.
+  await click(page, 87, 87);
   return errors;
 }
 

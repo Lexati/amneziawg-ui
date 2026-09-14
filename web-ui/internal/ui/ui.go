@@ -1,11 +1,12 @@
 // Package ui is the page: a fixed header, a scrolling body holding the
-// create-server form and the server list, and a status footer. It owns the
-// data the body is rendered from and the REST polling that keeps it
-// current, and hands everything the components need down to them through
-// env.Env.
+// dashboard, the create-server form and the server list, and a status
+// footer. It owns the data the body is rendered from and the REST polling
+// that keeps it current, and hands everything the components need down to
+// them through env.Env.
 //
 // The tree below this package follows the page top to bottom:
 //
+//	dashboard                      the collapsible traffic and host charts
 //	newserver                      the collapsible create form
 //	serverlist                     the cards
 //	  serverentry                  one server
@@ -30,6 +31,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"amneziawg-web-ui/web-ui/internal/ui/backend"
+	"amneziawg-web-ui/web-ui/internal/ui/dashboard"
 	"amneziawg-web-ui/web-ui/internal/ui/env"
 	"amneziawg-web-ui/web-ui/internal/ui/newserver"
 	"amneziawg-web-ui/web-ui/internal/ui/serverlist"
@@ -58,6 +60,7 @@ type UI struct {
 	transport  *canvas.Text
 	statusText *canvas.Text
 
+	charts *dashboard.Panel
 	form   *newserver.Form
 	list   *serverlist.List
 	scroll *container.Scroll
@@ -82,12 +85,15 @@ func New(a fyne.App, w fyne.Window) *UI {
 }
 
 // Build assembles the whole page: a fixed header, a scrolling body holding
-// the create-server form and the server cards, and a status footer.
+// the dashboard, the create-server form and the server cards, and a status
+// footer.
 func (u *UI) Build() fyne.CanvasObject {
+	u.charts = dashboard.New(trafficInterval, u.clampScroll)
 	u.form = newserver.New(u.env, u.state, u.clampScroll)
 	u.list = serverlist.New(u.env)
 
 	body := container.NewVBox(
+		u.charts.CanvasObject(),
 		u.form.CanvasObject(),
 		u.list.CanvasObject(),
 	)

@@ -66,7 +66,8 @@ func (l *List) Render(servers []api.Server) {
 // on the UI goroutine.
 func (l *List) ApplyTraffic(iface map[string]api.InterfaceTraffic, peers map[string]map[string]api.ClientTraffic) {
 	for id, card := range l.cards {
-		card.ApplyInterfaceTraffic(iface[id])
+		traffic, ok := iface[id]
+		card.ApplyInterfaceTraffic(traffic, ok)
 		card.ApplyPeerTraffic(peers[id])
 	}
 }

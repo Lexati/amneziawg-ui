@@ -17,19 +17,19 @@ test('a port another server already uses is rejected in the form', async ({ page
     }
   });
 
-  await click(page, 130, 87);
+  await click(page, 130, 143);
 
-  await click(page, 380, 149);
+  await click(page, 380, 205);
   await type(page, 'Duplicate Port');
 
   // Replace whatever free port the form offered with one that is not.
-  await click(page, 1100, 149);
+  await click(page, 1100, 205);
   await page.keyboard.press('Control+a');
   await page.keyboard.press('Backspace');
   await type(page, String(taken));
   await page.screenshot({ path: 'shots/08-port-taken.png' });
 
-  await click(page, 87, 267);
+  await click(page, 87, 323);
   await page.waitForTimeout(3000);
   await page.screenshot({ path: 'shots/09-port-rejected.png' });
 
