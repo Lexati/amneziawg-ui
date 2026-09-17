@@ -177,6 +177,11 @@ func (b *Client) UpdateAllowedIPs(serverID, clientID, allowedIPs string) error {
 		api.UpdateAllowedIPsRequest{AllowedIPs: allowedIPs}, nil)
 }
 
+func (b *Client) UpdateServerRoutes(serverID, clientID, serverRoutes string) error {
+	return b.put(apiBase+"/servers/"+serverID+"/clients/"+clientID+"/server-routes",
+		api.UpdateServerRoutesRequest{ServerRoutes: serverRoutes}, nil)
+}
+
 func (b *Client) UpdateISettings(serverID, clientID string, apply bool, settings api.ISettings) error {
 	if settings == nil {
 		settings = api.ISettings{}
