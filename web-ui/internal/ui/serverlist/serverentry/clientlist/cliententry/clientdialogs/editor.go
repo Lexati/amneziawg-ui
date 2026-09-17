@@ -30,6 +30,7 @@ func ShowEditor(e *env.Env, server api.Server, client *api.Client) {
 
 	name := widgets.NewEntry()
 	allowedIPs := widgets.EntryWithText("0.0.0.0/0, ::/0")
+	serverRoutes := widgets.NewEntry()
 	suspendAt := widgets.EntryWithPlaceholder(SuspendLayout)
 
 	applyI := widget.NewCheck(lang.L("Apply I-settings (custom signature packets I1-I5)"), nil)
