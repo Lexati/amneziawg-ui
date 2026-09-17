@@ -94,3 +94,12 @@ func TestMergeISettingsLayersOverrides(t *testing.T) {
 		t.Errorf("no layers should yield the defaults, got %v", got)
 	}
 }
+
+func TestPeerAllowedIPs(t *testing.T) {
+	if got := PeerAllowedIPs("10.100.0.3", ""); got != "10.100.0.3/32" {
+		t.Errorf("no routes: got %q", got)
+	}
+	if got := PeerAllowedIPs("10.100.0.3", "192.168.30.0/24, 10.50.0.0/16"); got != "10.100.0.3/32, 192.168.30.0/24, 10.50.0.0/16" {
+		t.Errorf("with routes: got %q", got)
+	}
+}
