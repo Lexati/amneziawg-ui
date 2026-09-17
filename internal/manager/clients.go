@@ -3,6 +3,7 @@ package manager
 import (
 	"fmt"
 	"time"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -266,30 +267,53 @@ func (m *Manager) UpdateClientAllowedIPs(serverID, clientID, allowedIPs string) 
 
 // UpdateClientServerRoutes changes the networks that live behind a client,
 // added to the server's AllowedIPs for that peer on top of the client's own
-// /32. Unlike AllowedIPs, this has to reach the peer entry in the server's
-// .conf too, not just the client's own rendered config.
+// /32. Unlike AllowedIPs, this also has to reach the peer entry in the
+// server's .conf - or its parked copy, if the client is currently suspended
+// - and resync the running interface, not just update the stored client.
 func (m *Manager) UpdateClientServerRoutes(serverID, clientID, serverRoutes string) (*api.Client, string, error) {
 	if problems := api.ValidateServerRoutes(serverRoutes); len(problems) > 0 {
 		return nil, "", fmt.Errorf("%w: %s", ErrInvalid, strings.Join(problems, "; "))
 	}
 	normalized := api.NormalizeServerRoutes(serverRoutes)
 
-	clientCopy, err := m.updateClientLocked(serverID, clientID, func(client *api.Client) {
-		client.ServerRoutes = normalized
-	})
+	clientCopy, ifaceName, err := m.updateClientServerRoutesLocked(serverID, clientID, normalized)
 	if err != nil {
 		return nil, "", err
 	}
 
-	// ⚠ TODO(server-routes): rewrite this client's peer block in the
-	// server .conf — needs whatever wgconf already uses to rewrite an
-	// existing peer in place (suspend/activate must do something similar).
-	// Without this line the in-memory client and web_config.json update
-	// correctly, but the running server's AllowedIPs does not — will wire
-	// this in as soon as I see wgconf.
-
 	m.saveOrLog("client update")
+	m.syncLiveConfig(ifaceName)
 	return clientCopy, m.clientConfigOf(serverID, clientCopy), nil
+}
+
+// updateClientServerRoutesLocked updates the in-memory client and rewrites
+// its peer entry in the server's .conf (live or parked) under a single
+// write lock, so the file and the in-memory state cannot disagree about
+// what a concurrent request sees.
+func (m *Manager) updateClientServerRoutesLocked(serverID, clientID, serverRoutes string) (client *api.Client, ifaceName string, err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	srv, c := m.findClient(serverID, clientID)
+	if srv == nil {
+		return nil, "", serverNotFound(serverID)
+	}
+	if c == nil {
+		return nil, "", clientNotFound(clientID)
+	}
+
+	c.ServerRoutes = serverRoutes
+	clientCopy := cloneClient(c)
+
+	peerAllowedIPs := wgconf.PeerAllowedIPs(clientCopy.ClientIP, serverRoutes)
+	if _, err := wgconf.RewritePeerAllowedIPs(srv.ConfigPath, &clientCopy, peerAllowedIPs); err != nil {
+		return nil, "", fmt.Errorf("rewriting %s: %w", srv.ConfigPath, err)
+	}
+	if _, err := wgconf.RewriteParkedPeerAllowedIPs(srv.ConfigPath, &clientCopy, peerAllowedIPs); err != nil {
+		return nil, "", fmt.Errorf("rewriting the suspended peer of %s: %w", clientCopy.Name, err)
+	}
+
+	return &clientCopy, srv.Interface, nil
 }
 
 // UpdateClientISettings updates the I1-I5 settings for a client.
