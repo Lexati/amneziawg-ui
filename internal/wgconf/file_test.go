@@ -85,3 +85,75 @@ func TestRemovePeerOfAClientWithoutABlockIsANoOp(t *testing.T) {
 		t.Error("the file was rewritten for nothing")
 	}
 }
+
+func TestRewritePeerAllowedIPsReplacesOnlyThatPeer(t *testing.T) {
+	path := newServerConf(t)
+	alice := &api.Client{ID: "aaa", Name: "alice", ClientPublicKey: "APUB", PresharedKey: "APSK"}
+	bob := &api.Client{ID: "bbb", Name: "bob", ClientPublicKey: "BPUB", PresharedKey: "BPSK"}
+	for _, c := range []*api.Client{alice, bob} {
+		if err := AppendPeer(path, c, "10.0.1.2/32"); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	found, err := RewritePeerAllowedIPs(path, alice, "10.0.1.2/32, 192.168.30.0/24")
+	if err != nil || !found {
+		t.Fatalf("found = %v, err = %v", found, err)
+	}
+
+	conf := read(t, path)
+	if !strings.Contains(conf, "AllowedIPs = 10.0.1.2/32, 192.168.30.0/24") {
+		t.Fatalf("alice's AllowedIPs not updated:\n%s", conf)
+	}
+	if !strings.Contains(conf, "AllowedIPs = 10.0.1.2/32\n") {
+		t.Fatalf("bob's AllowedIPs was touched:\n%s", conf)
+	}
+	if !strings.Contains(conf, "APUB") || !strings.Contains(conf, "APSK") {
+		t.Fatalf("alice's other fields lost:\n%s", conf)
+	}
+}
+
+func TestRewritePeerAllowedIPsOfMissingClientIsNoOp(t *testing.T) {
+	path := newServerConf(t)
+	before := read(t, path)
+	found, err := RewritePeerAllowedIPs(path, &api.Client{ID: "ghost"}, "10.0.0.9/32")
+	if err != nil || found {
+		t.Errorf("found = %v, err = %v", found, err)
+	}
+	if read(t, path) != before {
+		t.Error("file rewritten for a client that isn't there")
+	}
+}
+
+// A routing change made while a client is suspended must survive
+// reactivation - not get overwritten by the stale parked copy.
+func TestRewriteParkedPeerAllowedIPsSurvivesRestore(t *testing.T) {
+	path := newServerConf(t)
+	alice := &api.Client{ID: "aaa", Name: "alice", ClientPublicKey: "APUB", PresharedKey: "APSK"}
+	if err := AppendPeer(path, alice, "10.0.1.2/32"); err != nil {
+		t.Fatal(err)
+	}
+	if err := ParkPeer(path, alice); err != nil {
+		t.Fatal(err)
+	}
+
+	found, err := RewriteParkedPeerAllowedIPs(path, alice, "10.0.1.2/32, 192.168.30.0/24")
+	if err != nil || !found {
+		t.Fatalf("found = %v, err = %v", found, err)
+	}
+
+	if err := RestorePeer(path, alice); err != nil {
+		t.Fatal(err)
+	}
+	if conf := read(t, path); !strings.Contains(conf, "AllowedIPs = 10.0.1.2/32, 192.168.30.0/24") {
+		t.Fatalf("restored peer lost the routing change:\n%s", conf)
+	}
+}
+
+func TestRewriteParkedPeerAllowedIPsOfUnparkedClientIsNoOp(t *testing.T) {
+	path := newServerConf(t)
+	found, err := RewriteParkedPeerAllowedIPs(path, &api.Client{ID: "ghost"}, "10.0.0.9/32")
+	if err != nil || found {
+		t.Errorf("found = %v, err = %v", found, err)
+	}
+}
