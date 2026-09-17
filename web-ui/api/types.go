@@ -104,6 +104,12 @@ type Client struct {
 	ApplyISettings     bool               `json:"apply_i_settings"`
 	ISettings          map[string]string  `json:"i_settings"`
 	AllowedIPs         string             `json:"allowed_ips"`
+	// ServerRoutes lists the networks that live behind this client, as a
+	// comma-separated list of CIDRs (e.g. "192.168.30.0/24, 10.50.0.0/16").
+	// Added to the server's AllowedIPs for this peer, on top of the
+	// client's own /32. Never mixed into AllowedIPs, which only ever
+	// configures the routes the client itself receives.
+	ServerRoutes       string             `json:"server_routes,omitempty"`
 	SuspendAt          *float64           `json:"suspend_at,omitempty"`
 }
 
@@ -126,6 +132,15 @@ type AddClientRequest struct {
 	ApplyISettings bool              `json:"apply_i_settings"`
 	ISettings      map[string]string `json:"i_settings"`
 	AllowedIPs     string            `json:"allowed_ips"`
+	ServerRoutes   string            `json:"server_routes"`
+}
+
+// UpdateServerRoutesRequest is the payload to update the networks routed to
+// a client's server-side peer entry (the server's AllowedIPs for that
+// peer) - as opposed to UpdateAllowedIPsRequest, which changes the routes
+// the client itself receives.
+type UpdateServerRoutesRequest struct {
+	ServerRoutes string `json:"server_routes"`
 }
 
 // UpdateAllowedIPsRequest is the payload to update client AllowedIPs.
