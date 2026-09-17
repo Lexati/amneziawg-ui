@@ -55,6 +55,7 @@ func ShowEditor(e *env.Env, server api.Server, client *api.Client) {
 		if client.AllowedIPs != "" {
 			allowedIPs.SetText(client.AllowedIPs)
 		}
+		serverRoutes.SetText(client.ServerRoutes)
 		applyI.SetChecked(client.ApplyISettings)
 		for i, entry := range iEntries {
 			entry.SetText(client.ISettings[fmt.Sprintf("i%d", i+1)])
