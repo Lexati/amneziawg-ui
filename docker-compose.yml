@@ -1,6 +1,6 @@
 services:
   app:
-    image: proxy:latest
+    image: lexati/proxy:v3.1.9
     restart: unless-stopped
     ports:
       - "${WEB_UI_PORT:-54845}:${WEB_UI_PORT:-54845}/tcp"
