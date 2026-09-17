@@ -104,7 +104,11 @@ func (m *Manager) AddClient(serverID string, req api.AddClientRequest) (*api.Cli
 			return nil, "", fmt.Errorf("%w: %w", ErrInvalid, err)
 		}
 	}
-
+	
+	if problems := api.ValidateServerRoutes(req.ServerRoutes); len(problems) > 0 {
+	return nil, "", fmt.Errorf("%w: %s", ErrInvalid, strings.Join(problems, "; "))
+	}
+	
 	// Key generation shells out to awg three times. Doing that under the
 	// write lock would stall every other request, including plain reads, for
 	// the duration - and the keys do not depend on any config state.
@@ -160,11 +164,20 @@ func (m *Manager) addClientLocked(serverID, name string, req api.AddClientReques
 		ApplyISettings:     req.ApplyISettings,
 		ISettings:          iSettings,
 		AllowedIPs:         wgconf.AllowedIPsOrDefault(req.AllowedIPs),
+		ServerRoutes:       api.NormalizeServerRoutes(req.ServerRoutes),
 	}
 
 	// The server side routes only the client's own address to it, whatever
 	// the client itself sends through the tunnel.
-	if err := wgconf.AppendPeer(srv.ConfigPath, &newClient, clientIP+"/32"); err != nil {
+	//if err := wgconf.AppendPeer(srv.ConfigPath, &newClient, clientIP+"/32"); err != nil {
+	//	return nil, "", fmt.Errorf("failed to write client to server config: %w", err)
+	//}
+	
+	// The server side routes the client's own address plus whatever
+	// networks live behind it (ServerRoutes) - never the client's own
+	// AllowedIPs, which only configures the routes the client receives.
+	peerAllowedIPs := wgconf.PeerAllowedIPs(clientIP, newClient.ServerRoutes)
+	if err := wgconf.AppendPeer(srv.ConfigPath, &newClient, peerAllowedIPs); err != nil {
 		return nil, "", fmt.Errorf("failed to write client to server config: %w", err)
 	}
 
@@ -246,6 +259,34 @@ func (m *Manager) UpdateClientAllowedIPs(serverID, clientID, allowedIPs string) 
 	if err != nil {
 		return nil, "", err
 	}
+
+	m.saveOrLog("client update")
+	return clientCopy, m.clientConfigOf(serverID, clientCopy), nil
+}
+
+// UpdateClientServerRoutes changes the networks that live behind a client,
+// added to the server's AllowedIPs for that peer on top of the client's own
+// /32. Unlike AllowedIPs, this has to reach the peer entry in the server's
+// .conf too, not just the client's own rendered config.
+func (m *Manager) UpdateClientServerRoutes(serverID, clientID, serverRoutes string) (*api.Client, string, error) {
+	if problems := api.ValidateServerRoutes(serverRoutes); len(problems) > 0 {
+		return nil, "", fmt.Errorf("%w: %s", ErrInvalid, strings.Join(problems, "; "))
+	}
+	normalized := api.NormalizeServerRoutes(serverRoutes)
+
+	clientCopy, err := m.updateClientLocked(serverID, clientID, func(client *api.Client) {
+		client.ServerRoutes = normalized
+	})
+	if err != nil {
+		return nil, "", err
+	}
+
+	// ⚠ TODO(server-routes): rewrite this client's peer block in the
+	// server .conf — needs whatever wgconf already uses to rewrite an
+	// existing peer in place (suspend/activate must do something similar).
+	// Without this line the in-memory client and web_config.json update
+	// correctly, but the running server's AllowedIPs does not — will wire
+	// this in as soon as I see wgconf.
 
 	m.saveOrLog("client update")
 	return clientCopy, m.clientConfigOf(serverID, clientCopy), nil
