@@ -194,5 +194,7 @@
   "{{.Count}}d": "{{.Count}}д",
   "{{.Count}}h": "{{.Count}}ч",
   "{{.Count}}m": "{{.Count}}м",
-  "{{.Field}} must be a number": "{{.Field}} должно быть числом"
+  "{{.Field}} must be a number": "{{.Field}} должно быть числом",
+  "Networks behind this client": "Сети, стоящие за этим клиентом",
+  "comma-separated CIDR networks added to this peer's AllowedIPs on the server; leave empty if there are none. Not the same as Allowed IPs above, which sets the routes the client itself receives.": "сети CIDR, разделенные запятыми, добавлены в список разрешенных адресов этого узла на сервере; если таковых нет, оставьте поле пустым. Не то же самое, что разрешенные IP-адреса выше, которые устанавливают маршруты, которые получает сам клиент."
 }
