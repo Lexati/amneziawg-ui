@@ -26,6 +26,20 @@ type ServerInterface struct {
 	Obfuscation *api.ObfuscationParams
 }
 
+// PeerAllowedIPs is the server-side AllowedIPs for one peer: the client's
+// own address, plus whatever networks live behind it (serverRoutes, already
+// comma-separated - see api.NormalizeServerRoutes). Unlike
+// AllowedIPsOrDefault, this never falls back to a full-tunnel default - a
+// client routing nothing extra gets exactly its own /32, which is what a
+// peer entry is for.
+func PeerAllowedIPs(clientIP, serverRoutes string) string {
+	ips := []string{clientIP + "/32"}
+	if serverRoutes = strings.TrimSpace(serverRoutes); serverRoutes != "" {
+		ips = append(ips, serverRoutes)
+	}
+	return strings.Join(ips, ", ")
+}
+
 // Render produces the [Interface] section.
 func (s ServerInterface) Render() string {
 	var sb strings.Builder
