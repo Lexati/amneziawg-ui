@@ -47,6 +47,44 @@ func RemovePeer(path string, client *api.Client) (block []string, err error) {
 	return block, nil
 }
 
+// RewriteAllowedIPsLine replaces the "AllowedIPs = ..." line within a single
+// peer block's lines, leaving every other line untouched. A block missing
+// that line - not one PeerBlock produces, but defensive against a
+// hand-edited file - is returned unchanged.
+func RewriteAllowedIPsLine(block []string, allowedIPs string) []string {
+	out := append([]string{}, block...)
+	for i, line := range out {
+		if strings.HasPrefix(strings.TrimSpace(line), "AllowedIPs") {
+			out[i] = "AllowedIPs = " + allowedIPs
+			return out
+		}
+	}
+	return out
+}
+
+// RewritePeerAllowedIPs replaces the AllowedIPs line of a client's peer
+// block in the server's live .conf, without touching any other peer.
+// Internally this removes the block and re-appends it - the same reordering
+// RestorePeer already causes when a suspended client comes back, which does
+// not affect how WireGuard reads the file. found is false, with no error,
+// when the client has no block in this file: a suspended client's block
+// lives under SuspendedDir instead - see RewriteParkedPeerAllowedIPs.
+func RewritePeerAllowedIPs(path string, client *api.Client, allowedIPs string) (found bool, err error) {
+	block, err := RemovePeer(path, client)
+	if err != nil {
+		return false, err
+	}
+	if block == nil {
+		return false, nil
+	}
+
+	block = RewriteAllowedIPsLine(block, allowedIPs)
+	if err := appendText(path, "\n"+strings.Join(block, "\n")+"\n"); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 // SuspendedDir is where a suspended peer block is parked while it is out of
 // the server's live .conf. It sits next to that .conf rather than under a
 // fixed path, so the two always move together.
@@ -74,6 +112,29 @@ func ParkPeer(serverConfPath string, client *api.Client) error {
 		return fmt.Errorf("storing the suspended peer: %w", err)
 	}
 	return nil
+}
+
+// RewriteParkedPeerAllowedIPs does the same to a suspended client's parked
+// block, so a routing change made while the client is paused is not lost
+// when RestorePeer later puts the original block back verbatim. found is
+// false, with no error, when the client is not currently parked.
+func RewriteParkedPeerAllowedIPs(serverConfPath string, client *api.Client, allowedIPs string) (found bool, err error) {
+	parked := filepath.Join(SuspendedDir(serverConfPath), client.ID+".conf")
+
+	data, err := os.ReadFile(parked)
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+
+	block := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
+	block = RewriteAllowedIPsLine(block, allowedIPs)
+	if err := atomicfile.Write(parked, []byte(strings.Join(block, "\n")+"\n"), 0o600); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // RestorePeer appends the client's parked block back onto the server's .conf
