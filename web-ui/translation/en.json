@@ -188,5 +188,7 @@
   "{{.Count}}d": "{{.Count}}d",
   "{{.Count}}h": "{{.Count}}h",
   "{{.Count}}m": "{{.Count}}m",
-  "{{.Field}} must be a number": "{{.Field}} must be a number"
+  "{{.Field}} must be a number": "{{.Field}} must be a number",
+  "Networks behind this client": "Networks behind this client",
+  "comma-separated CIDR networks added to this peer's AllowedIPs on the server; leave empty if there are none. Not the same as Allowed IPs above, which sets the routes the client itself receives.": "comma-separated CIDR networks added to this peer's AllowedIPs on the server; leave empty if there are none. Not the same as Allowed IPs above, which sets the routes the client itself receives."
 }
