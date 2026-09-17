@@ -99,6 +99,15 @@ func ShowEditor(e *env.Env, server api.Server, client *api.Client) {
 	}
 
 	if editing {
+		items = append(items, &widget.FormItem{
+			Text: lang.L("Networks behind this client"), Widget: serverRoutes,
+			HintText: lang.L("comma-separated CIDR networks added to this peer's AllowedIPs on the server; " +
+				"leave empty if there are none. Not the same as Allowed IPs above, which sets the routes " +
+				"the client itself receives."),
+		})
+	}
+
+	if editing {
 		clear := widgets.NewButton("", theme.CancelIcon(), func() { suspendAt.SetText("") })
 		items = append(items, &widget.FormItem{
 			Text:     lang.L("Auto-suspend at"),
@@ -146,7 +155,12 @@ func ShowEditor(e *env.Env, server api.Server, client *api.Client) {
 		}
 
 		if editing {
-			save(e, server.ID, *client, routes, applyI.Checked, settings, strings.TrimSpace(suspendAt.Text))
+			routedNetworks := strings.TrimSpace(serverRoutes.Text)
+			if problems := api.ValidateServerRoutes(routedNetworks); len(problems) > 0 {
+				e.Notify.Fail(errors.New(strings.Join(problems, "\n")))
+				return false
+			}
+			save(e, server.ID, *client, routes, routedNetworks, applyI.Checked, settings, strings.TrimSpace(suspendAt.Text))
 			return true
 		}
 		add(e, server, strings.TrimSpace(name.Text), routes, applyI.Checked, settings)
