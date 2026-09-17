@@ -189,9 +189,10 @@ func add(e *env.Env, server api.Server, name, allowedIPs string, applyI bool, se
 	}()
 }
 
-// save applies the three independent updates the backend exposes for an
-// existing peer: routing, I-settings and the auto-suspend timestamp.
-func save(e *env.Env, serverID string, client api.Client, allowedIPs string, applyI bool, settings api.ISettings, suspendAt string) {
+// save applies the independent updates the backend exposes for an existing
+// peer: client-side routing, server-side routed networks, I-settings and the
+// auto-suspend timestamp.
+func save(e *env.Env, serverID string, client api.Client, allowedIPs, serverRoutes string, applyI bool, settings api.ISettings, suspendAt string) {
 	var when *time.Time
 	if suspendAt != "" {
 		parsed, err := time.ParseInLocation(SuspendLayout, suspendAt, time.Local)
@@ -204,6 +205,10 @@ func save(e *env.Env, serverID string, client api.Client, allowedIPs string, app
 
 	go func() {
 		if err := e.Backend.UpdateAllowedIPs(serverID, client.ID, allowedIPs); err != nil {
+			e.Notify.Fail(err)
+			return
+		}
+		if err := e.Backend.UpdateServerRoutes(serverID, client.ID, serverRoutes); err != nil {
 			e.Notify.Fail(err)
 			return
 		}
