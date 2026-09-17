@@ -59,6 +59,20 @@ func (h *Handlers) updateClientAllowedIPs(c fiber.Ctx) error {
 	return c.JSON(api.ClientResult{Client: client, Config: cfg})
 }
 
+func (h *Handlers) updateClientServerRoutes(c fiber.Ctx) error {
+	id := c.Params("id")
+	clientID := c.Params("clientId")
+	var req api.UpdateServerRoutesRequest
+	if err := decode(c, &req); err != nil {
+		return fail(c, err)
+	}
+	client, cfg, err := h.mgr.UpdateClientServerRoutes(id, clientID, req.ServerRoutes)
+	if err != nil {
+		return fail(c, err)
+	}
+	return c.JSON(api.ClientResult{Client: client, Config: cfg})
+}
+
 func (h *Handlers) updateClientISettings(c fiber.Ctx) error {
 	id := c.Params("id")
 	clientID := c.Params("clientId")
